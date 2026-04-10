@@ -954,12 +954,9 @@ function buildProxyStrategies(endpoint, options) {
   const fullUrl = API_BASE + endpoint;
   // URL with credentials embedded for proxies that strip auth headers
   const authUrl = `https://${encodeURIComponent(email)}:${encodeURIComponent(token)}@api.organizze.com.br/rest/v2${endpoint}`;
- }
-    }
   } catch(e) {
     console.error('Load error:', e);
   }
-}
 
 // ═══════════════════════════════════════════════
 //  NAVIGATION
