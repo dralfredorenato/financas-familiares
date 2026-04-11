@@ -815,6 +815,7 @@ tr:hover td { background: var(--bg-card-alt); }
     <div class="nav-item" data-page="cards"><span class="emoji">💎</span> Cartões</div>
     <div class="nav-item" data-page="family"><span class="emoji">👨‍👩‍👧</span> Família</div>
     <div class="nav-item" data-page="reports"><span class="emoji">📈</span> Relatórios</div>
+    <div class="nav-item" data-page="manage"><span class="emoji">🗂️</span> Gerenciar</div>
     <div class="nav-item" data-page="settings"><span class="emoji">⚙️</span> Configurações</div>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">🚪 Sair</button>
@@ -994,6 +995,71 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
 
+    <!-- ═══ MANAGE (Categorias / Contas) ═══ -->
+    <div class="page" id="page-manage">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🗂️ Gerenciar</span>
+          <div id="manageTabBtns" style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-primary" data-manage-tab="categories" onclick="switchManageTab('categories')">🏷️ Categorias</button>
+            <button class="btn btn-sm btn-secondary" data-manage-tab="accounts" onclick="switchManageTab('accounts')">🏦 Contas</button>
+          </div>
+        </div>
+        <p style="color:var(--text-secondary);font-size:13px;margin:4px 0 0;line-height:1.5;">
+          Crie, edite e exclua suas categorias de gastos e suas contas bancárias. Mudanças são enviadas diretamente para o Organizze.
+        </p>
+      </div>
+
+      <!-- Tab: Categorias -->
+      <div class="card" id="manageTabCategories">
+        <div class="card-header">
+          <span class="card-title">🏷️ Categorias de gastos</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="openNewCategoryModal()">➕ Nova categoria</button>
+          </div>
+        </div>
+        <div id="manageCategoriesStatus" style="font-size:13px;margin:6px 0 12px;min-height:18px;color:var(--text-secondary);"></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:48px;">Cor</th>
+                <th>Nome</th>
+                <th style="text-align:right;">Lançamentos</th>
+                <th style="width:160px;text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="manageCategoriesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Contas -->
+      <div class="card" id="manageTabAccounts" style="display:none;">
+        <div class="card-header">
+          <span class="card-title">🏦 Contas bancárias</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="openAccountModal()">➕ Nova conta</button>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;">Para cartões de crédito use o módulo "Cartões".</p>
+        <div id="manageAccountsStatus" style="font-size:13px;margin:6px 0 12px;min-height:18px;color:var(--text-secondary);"></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+                <th style="text-align:right;">Lançamentos</th>
+                <th style="width:160px;text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="manageAccountsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ SETTINGS ═══ -->
     <div class="page" id="page-settings">
       <div class="card">
@@ -1152,11 +1218,11 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
-<!-- ═══════════ MODAL (nova categoria) ═══════════ -->
+<!-- ═══════════ MODAL (nova/editar categoria) ═══════════ -->
 <div class="modal-backdrop" id="newCategoryBackdrop" onclick="closeNewCategoryModal(event)">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:420px;">
-    <h3>➕ Nova categoria</h3>
-    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.</p>
+    <h3 id="newCategoryTitle">➕ Nova categoria</h3>
+    <p id="newCategoryHelp" style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.</p>
     <div class="form-row">
       <div class="form-col">
         <label>Nome</label>
@@ -1177,9 +1243,50 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
     <div id="newCategoryStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
-    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
-      <button class="btn btn-secondary" onclick="closeNewCategoryModal()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSaveNewCategory" onclick="saveNewCategory()">💾 Criar categoria</button>
+    <div style="display:flex;gap:12px;justify-content:space-between;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" id="btnDeleteCategory" class="btn btn-secondary" onclick="deleteCategoryFromModal()" style="display:none;color:var(--red);border-color:var(--red);">🗑️ Excluir</button>
+      <div style="display:flex;gap:12px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeNewCategoryModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveNewCategory" onclick="saveNewCategory()">💾 Criar categoria</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL (editar conta bancária) ═══════════ -->
+<div class="modal-backdrop" id="accountBackdrop" onclick="closeAccountModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <h3 id="accountModalTitle">➕ Nova conta</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">As contas são sincronizadas com o Organizze. Cartões de crédito ficam no módulo "Cartões".</p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Nome</label>
+        <input type="text" id="accountName" placeholder="Ex: Banco do Brasil, Nubank, Carteira..." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Tipo</label>
+        <select id="accountType">
+          <option value="checking">Corrente</option>
+          <option value="savings">Poupança</option>
+          <option value="investment">Investimento</option>
+          <option value="cash">Dinheiro / Carteira</option>
+          <option value="other_kind">Outros</option>
+        </select>
+      </div>
+      <div class="form-col">
+        <label>Descrição (opcional)</label>
+        <input type="text" id="accountDescription" placeholder="Ex: conta conjunta" />
+      </div>
+    </div>
+    <div id="accountStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:space-between;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" id="btnDeleteAccount" class="btn btn-secondary" onclick="deleteAccountFromModal()" style="display:none;color:var(--red);border-color:var(--red);">🗑️ Excluir</button>
+      <div style="display:flex;gap:12px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeAccountModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveAccount" onclick="saveAccount()">💾 Salvar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1527,7 +1634,7 @@ setInterval(updateRefreshLabel, 30 * 1000);
 
 function isAnyModalOpen() {
   // Evita atropelar o usuário durante edição
-  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'bulkCategorizeBackdrop', 'forceChangeOverlay'];
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'accountBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'bulkCategorizeBackdrop', 'forceChangeOverlay'];
   for (var i = 0; i < candidates.length; i++) {
     var el = document.getElementById(candidates[i]);
     if (!el) continue;
@@ -2403,6 +2510,7 @@ const pageTitles = {
   cards: '💎 Cartões',
   family: '👨‍👩‍👧 Família',
   reports: '📈 Relatórios',
+  manage: '🗂️ Gerenciar',
   settings: '⚙️ Configurações',
 };
 
@@ -2429,6 +2537,7 @@ function renderPage(page) {
     case 'cards': renderCards(); break;
     case 'family': renderFamily(); break;
     case 'reports': renderReports(); break;
+    case 'manage': renderManage(); break;
     case 'settings': renderSettings(); break;
   }
 }
@@ -3679,15 +3788,22 @@ async function _applyBulkSuggestions(txs, scopeLabel) {
 }
 
 // ═══════════════════════════════════════════════
-//  CRIAR NOVA CATEGORIA (via POST /api/proxy?endpoint=categories)
+//  CATEGORIAS — CRIAR / EDITAR / EXCLUIR
 // ═══════════════════════════════════════════════
-// Guarda qual dropdown deve ser atualizado após criar a categoria.
+// O modal é compartilhado entre criação e edição. Em modo "edit" guardamos
+// APP.__editingCategoryId; em "create" guardamos APP.__newCategoryTarget
+// (id do <select> que deve receber a categoria recém-criada).
 function openNewCategoryModal(targetSelectId) {
+  APP.__editingCategoryId = null;
   APP.__newCategoryTarget = targetSelectId || null;
+  document.getElementById('newCategoryTitle').textContent = '➕ Nova categoria';
+  document.getElementById('newCategoryHelp').textContent = 'A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.';
   document.getElementById('newCategoryName').value = '';
   document.getElementById('newCategoryKind').value = 'expense';
   document.getElementById('newCategoryColor').value = '#43A047';
   document.getElementById('newCategoryStatus').textContent = '';
+  document.getElementById('btnSaveNewCategory').textContent = '💾 Criar categoria';
+  document.getElementById('btnDeleteCategory').style.display = 'none';
   document.getElementById('newCategoryBackdrop').classList.add('active');
   setTimeout(function() {
     const el = document.getElementById('newCategoryName');
@@ -3695,18 +3811,43 @@ function openNewCategoryModal(targetSelectId) {
   }, 50);
 }
 
+function openEditCategoryModal(categoryId) {
+  const cat = (STATE.categories || []).find(c => c.id === categoryId);
+  if (!cat) {
+    alert('Categoria não encontrada.');
+    return;
+  }
+  APP.__editingCategoryId = categoryId;
+  APP.__newCategoryTarget = null;
+  document.getElementById('newCategoryTitle').textContent = '✏️ Editar categoria';
+  document.getElementById('newCategoryHelp').textContent = 'As alterações serão salvas direto no Organizze e refletem em todos os lançamentos.';
+  document.getElementById('newCategoryName').value = cat.name || '';
+  // kind é inferido pelo sinal das transações; mantemos como referência do formulário
+  document.getElementById('newCategoryKind').value = 'expense';
+  document.getElementById('newCategoryColor').value = cat.color || '#43A047';
+  document.getElementById('newCategoryStatus').textContent = '';
+  document.getElementById('btnSaveNewCategory').textContent = '💾 Salvar alterações';
+  document.getElementById('btnDeleteCategory').style.display = 'inline-block';
+  document.getElementById('newCategoryBackdrop').classList.add('active');
+  setTimeout(function() {
+    const el = document.getElementById('newCategoryName');
+    if (el) { el.focus(); el.select && el.select(); }
+  }, 50);
+}
+
 function closeNewCategoryModal(e) {
   if (e && e.target !== document.getElementById('newCategoryBackdrop')) return;
   document.getElementById('newCategoryBackdrop').classList.remove('active');
   APP.__newCategoryTarget = null;
+  APP.__editingCategoryId = null;
 }
 
 async function saveNewCategory() {
   const name = document.getElementById('newCategoryName').value.trim();
-  const kind = document.getElementById('newCategoryKind').value;
   const color = document.getElementById('newCategoryColor').value;
   const status = document.getElementById('newCategoryStatus');
   const btn = document.getElementById('btnSaveNewCategory');
+  const editingId = APP.__editingCategoryId || null;
 
   if (!name) {
     status.innerHTML = '<span style="color:var(--red);">Informe um nome.</span>';
@@ -3714,49 +3855,309 @@ async function saveNewCategory() {
   }
 
   btn.disabled = true;
-  btn.textContent = 'Criando...';
+  btn.textContent = editingId ? 'Salvando...' : 'Criando...';
   status.innerHTML = '<span style="color:var(--text-secondary);">Enviando ao Organizze...</span>';
 
   try {
-    // Organizze API: POST /categories com { name, color, kind? }
-    // kind não é um campo oficial; transações expense/income são diferenciadas
-    // pelo sinal do valor. Mas mandamos essa info pra referência futura.
     const payload = { name: name, color: color };
-    const created = await api('categories', { method: 'POST', body: payload });
-
-    if (!created || !created.id) {
-      status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
-      btn.disabled = false;
-      btn.textContent = '💾 Criar categoria';
-      return;
-    }
-
-    // Adiciona ao STATE e re-seleciona no dropdown alvo
-    STATE.categories.push(created);
-    if (APP.__newCategoryTarget) {
-      const sel = document.getElementById(APP.__newCategoryTarget);
-      if (sel) {
-        const opt = document.createElement('option');
-        opt.value = created.id;
-        opt.textContent = created.name;
-        sel.appendChild(opt);
-        sel.value = created.id;
+    let saved;
+    if (editingId) {
+      // PUT /categories/:id
+      saved = await api('categories/' + editingId, { method: 'PUT', body: payload });
+      // Atualiza STATE localmente mesmo que o retorno seja parcial
+      const local = STATE.categories.find(c => c.id === editingId);
+      if (local) {
+        local.name = (saved && saved.name) || name;
+        local.color = (saved && saved.color) || color;
+      }
+    } else {
+      // POST /categories
+      saved = await api('categories', { method: 'POST', body: payload });
+      if (!saved || !saved.id) {
+        status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
+        btn.disabled = false;
+        btn.textContent = '💾 Criar categoria';
+        return;
+      }
+      STATE.categories.push(saved);
+      if (APP.__newCategoryTarget) {
+        const sel = document.getElementById(APP.__newCategoryTarget);
+        if (sel) {
+          const opt = document.createElement('option');
+          opt.value = saved.id;
+          opt.textContent = saved.name;
+          sel.appendChild(opt);
+          sel.value = saved.id;
+        }
       }
     }
 
-    status.innerHTML = '<span style="color:var(--green-600);">✅ Categoria criada!</span>';
+    status.innerHTML = '<span style="color:var(--green-600);">✅ ' + (editingId ? 'Categoria atualizada!' : 'Categoria criada!') + '</span>';
+    // Se a página de gerenciamento está aberta, re-renderiza
+    if (STATE.currentPage === 'manage') renderManageCategories();
     setTimeout(function() {
       document.getElementById('newCategoryBackdrop').classList.remove('active');
       APP.__newCategoryTarget = null;
+      APP.__editingCategoryId = null;
       btn.disabled = false;
-      btn.textContent = '💾 Criar categoria';
+      btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar categoria';
     }, 700);
   } catch (e) {
     showError('saveNewCategory', e);
     status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
     btn.disabled = false;
-    btn.textContent = '💾 Criar categoria';
+    btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar categoria';
   }
+}
+
+async function deleteCategoryFromModal() {
+  const editingId = APP.__editingCategoryId;
+  if (!editingId) return;
+  const cat = (STATE.categories || []).find(c => c.id === editingId);
+  if (!cat) return;
+  const uses = (STATE.transactions || []).filter(t => t.category_id === editingId).length;
+  const confirmMsg = '🗑️ Excluir a categoria "' + (cat.name || '') + '"?'
+    + (uses ? '\n\n⚠️ ' + uses + ' lançamento(s) no período atual usam essa categoria e ficarão sem categoria no Organizze.' : '')
+    + '\n\nEsta ação não pode ser desfeita.';
+  if (!confirm(confirmMsg)) return;
+
+  const status = document.getElementById('newCategoryStatus');
+  const btn = document.getElementById('btnDeleteCategory');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Removendo do Organizze...</span>';
+
+  try {
+    await api('categories/' + editingId, { method: 'DELETE' });
+    STATE.categories = (STATE.categories || []).filter(c => c.id !== editingId);
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Categoria excluída.</span>';
+    if (STATE.currentPage === 'manage') renderManageCategories();
+    setTimeout(function() {
+      document.getElementById('newCategoryBackdrop').classList.remove('active');
+      APP.__editingCategoryId = null;
+      btn.disabled = false;
+      btn.textContent = '🗑️ Excluir';
+    }, 700);
+  } catch (e) {
+    showError('deleteCategory', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro ao excluir') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Excluir';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CONTAS — CRIAR / EDITAR / EXCLUIR
+// ═══════════════════════════════════════════════
+function openAccountModal(accountId) {
+  const isEdit = !!accountId;
+  const acc = isEdit ? (STATE.accounts || []).find(a => a.id === accountId) : null;
+  if (isEdit && !acc) {
+    alert('Conta não encontrada.');
+    return;
+  }
+  APP.__editingAccountId = isEdit ? accountId : null;
+  document.getElementById('accountModalTitle').textContent = isEdit ? '✏️ Editar conta' : '➕ Nova conta';
+  document.getElementById('accountName').value = (acc && acc.name) || '';
+  document.getElementById('accountType').value = (acc && acc.type) || 'checking';
+  document.getElementById('accountDescription').value = (acc && acc.description) || '';
+  document.getElementById('accountStatus').textContent = '';
+  document.getElementById('btnSaveAccount').textContent = isEdit ? '💾 Salvar alterações' : '💾 Criar conta';
+  document.getElementById('btnDeleteAccount').style.display = isEdit ? 'inline-block' : 'none';
+  document.getElementById('accountBackdrop').classList.add('active');
+  setTimeout(function() {
+    const el = document.getElementById('accountName');
+    if (el) { el.focus(); el.select && el.select(); }
+  }, 50);
+}
+
+function closeAccountModal(e) {
+  if (e && e.target !== document.getElementById('accountBackdrop')) return;
+  document.getElementById('accountBackdrop').classList.remove('active');
+  APP.__editingAccountId = null;
+}
+
+async function saveAccount() {
+  const name = document.getElementById('accountName').value.trim();
+  const type = document.getElementById('accountType').value;
+  const description = document.getElementById('accountDescription').value.trim();
+  const status = document.getElementById('accountStatus');
+  const btn = document.getElementById('btnSaveAccount');
+  const editingId = APP.__editingAccountId || null;
+
+  if (!name) {
+    status.innerHTML = '<span style="color:var(--red);">Informe um nome.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = editingId ? 'Salvando...' : 'Criando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Enviando ao Organizze...</span>';
+
+  try {
+    const payload = { name: name, type: type, description: description };
+    let saved;
+    if (editingId) {
+      saved = await api('accounts/' + editingId, { method: 'PUT', body: payload });
+      const local = (STATE.accounts || []).find(a => a.id === editingId);
+      if (local) {
+        local.name = (saved && saved.name) || name;
+        local.type = (saved && saved.type) || type;
+        local.description = (saved && saved.description) || description;
+      }
+    } else {
+      saved = await api('accounts', { method: 'POST', body: payload });
+      if (!saved || !saved.id) {
+        status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
+        btn.disabled = false;
+        btn.textContent = '💾 Criar conta';
+        return;
+      }
+      STATE.accounts = (STATE.accounts || []).concat(saved);
+    }
+    status.innerHTML = '<span style="color:var(--green-600);">✅ ' + (editingId ? 'Conta atualizada!' : 'Conta criada!') + '</span>';
+    if (STATE.currentPage === 'manage') renderManageAccounts();
+    setTimeout(function() {
+      document.getElementById('accountBackdrop').classList.remove('active');
+      APP.__editingAccountId = null;
+      btn.disabled = false;
+      btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar conta';
+    }, 700);
+  } catch (e) {
+    showError('saveAccount', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+    btn.disabled = false;
+    btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar conta';
+  }
+}
+
+async function deleteAccountFromModal() {
+  const editingId = APP.__editingAccountId;
+  if (!editingId) return;
+  const acc = (STATE.accounts || []).find(a => a.id === editingId);
+  if (!acc) return;
+  const uses = (STATE.transactions || []).filter(t => t.account_id === editingId).length;
+  const confirmMsg = '🗑️ Excluir a conta "' + (acc.name || '') + '"?'
+    + (uses ? '\n\n⚠️ ' + uses + ' lançamento(s) no período atual estão vinculados a essa conta.' : '')
+    + '\n\nEsta ação não pode ser desfeita.';
+  if (!confirm(confirmMsg)) return;
+
+  const status = document.getElementById('accountStatus');
+  const btn = document.getElementById('btnDeleteAccount');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Removendo do Organizze...</span>';
+
+  try {
+    await api('accounts/' + editingId, { method: 'DELETE' });
+    STATE.accounts = (STATE.accounts || []).filter(a => a.id !== editingId);
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Conta excluída.</span>';
+    if (STATE.currentPage === 'manage') renderManageAccounts();
+    setTimeout(function() {
+      document.getElementById('accountBackdrop').classList.remove('active');
+      APP.__editingAccountId = null;
+      btn.disabled = false;
+      btn.textContent = '🗑️ Excluir';
+    }, 700);
+  } catch (e) {
+    showError('deleteAccount', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro ao excluir') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Excluir';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PÁGINA GERENCIAR (Categorias / Contas)
+// ═══════════════════════════════════════════════
+function renderManage() {
+  const tab = STATE.manageTab || 'categories';
+  switchManageTab(tab);
+}
+
+function switchManageTab(tab) {
+  STATE.manageTab = tab;
+  const catTab = document.getElementById('manageTabCategories');
+  const accTab = document.getElementById('manageTabAccounts');
+  if (catTab) catTab.style.display = tab === 'categories' ? '' : 'none';
+  if (accTab) accTab.style.display = tab === 'accounts' ? '' : 'none';
+  // Alterna estilo dos botões de tab
+  document.querySelectorAll('#manageTabBtns button[data-manage-tab]').forEach(function(b) {
+    const active = b.getAttribute('data-manage-tab') === tab;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-secondary', !active);
+  });
+  if (tab === 'categories') renderManageCategories();
+  else renderManageAccounts();
+}
+
+function renderManageCategories() {
+  const body = document.getElementById('manageCategoriesBody');
+  const status = document.getElementById('manageCategoriesStatus');
+  if (!body) return;
+  const cats = getSortedRootCategories();
+  if (status) {
+    status.textContent = cats.length
+      ? cats.length + ' categoria' + (cats.length === 1 ? '' : 's') + ' cadastrada' + (cats.length === 1 ? '' : 's') + '.'
+      : 'Nenhuma categoria cadastrada ainda. Clique em "Nova categoria" para criar a primeira.';
+  }
+  if (!cats.length) {
+    body.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="emoji">🏷️</div><div>Nenhuma categoria</div></div></td></tr>';
+    return;
+  }
+  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const txs = STATE.transactions || [];
+  body.innerHTML = cats.map(c => {
+    const color = (c.color && /^#[0-9a-fA-F]{6}$/.test(c.color)) ? c.color : '#9E9E9E';
+    const uses = txs.filter(t => t.category_id === c.id).length;
+    return '<tr>'
+      + '<td><span style="display:inline-block;width:22px;height:22px;border-radius:6px;background:' + color + ';border:1px solid var(--border);"></span></td>'
+      + '<td style="font-weight:600;">' + escHtml(c.name) + '</td>'
+      + '<td style="text-align:right;color:var(--text-secondary);">' + uses + '</td>'
+      + '<td style="text-align:right;">'
+      +   '<button class="btn btn-sm btn-secondary" onclick="openEditCategoryModal(' + c.id + ')" title="Editar">✏️ Editar</button> '
+      +   '<button class="btn btn-sm btn-secondary" onclick="openEditCategoryModalAndDelete(' + c.id + ')" title="Excluir" style="color:var(--red);border-color:var(--red);">🗑️</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+// Atalho usado pelo botão de excluir da lista: abre o modal e dispara a confirmação
+function openEditCategoryModalAndDelete(categoryId) {
+  openEditCategoryModal(categoryId);
+  // Pequeno delay para garantir que o modal está aberto antes do confirm()
+  setTimeout(function() { deleteCategoryFromModal(); }, 50);
+}
+
+function renderManageAccounts() {
+  const body = document.getElementById('manageAccountsBody');
+  const status = document.getElementById('manageAccountsStatus');
+  if (!body) return;
+  const accs = sortByName(STATE.accounts || []);
+  if (status) {
+    status.textContent = accs.length
+      ? accs.length + ' conta' + (accs.length === 1 ? '' : 's') + ' cadastrada' + (accs.length === 1 ? '' : 's') + '.'
+      : 'Nenhuma conta cadastrada ainda.';
+  }
+  if (!accs.length) {
+    body.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="emoji">🏦</div><div>Nenhuma conta</div></div></td></tr>';
+    return;
+  }
+  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const txs = STATE.transactions || [];
+  const typeLabels = { checking: 'Corrente', savings: 'Poupança', investment: 'Investimento', cash: 'Dinheiro', other_kind: 'Outros' };
+  body.innerHTML = accs.map(a => {
+    const uses = txs.filter(t => t.account_id === a.id).length;
+    const type = typeLabels[a.type] || a.type || '—';
+    return '<tr>'
+      + '<td style="font-weight:600;">🏦 ' + escHtml(a.name) + (a.description ? '<br><span style="font-size:12px;color:var(--text-muted);">' + escHtml(a.description) + '</span>' : '') + '</td>'
+      + '<td style="color:var(--text-secondary);">' + escHtml(type) + '</td>'
+      + '<td style="text-align:right;color:var(--text-secondary);">' + uses + '</td>'
+      + '<td style="text-align:right;">'
+      +   '<button class="btn btn-sm btn-secondary" onclick="openAccountModal(' + a.id + ')" title="Editar">✏️ Editar</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════
