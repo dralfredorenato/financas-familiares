@@ -880,16 +880,6 @@ tr:hover td { background: var(--bg-card-alt); }
             <select id="filterType"><option value="">Todos</option><option value="income">Receitas</option><option value="expense">Despesas</option></select>
           </div>
           <div class="form-col"><label>Buscar</label><input type="text" id="filterSearch" placeholder="Descrição..." /></div>
-          <div class="form-col"><label>Por página</label>
-            <select id="filterPerPage" onchange="setPerPage(this.value)">
-              <option value="10">10</option>
-              <option value="25" selected>25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-              <option value="200">200</option>
-              <option value="-1">Todas</option>
-            </select>
-          </div>
           <div class="form-col" style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="applyFilters()">Filtrar</button></div>
         </div>
       </div>
@@ -1340,7 +1330,8 @@ let STATE = {
   invoices: {},
   currentPage: 'dashboard',
   txPage: 1,
-  txPerPage: 25,
+  txPerPage: -1, // sempre mostra todos os lançamentos do período selecionado
+  txFilterRange: null, // {start, end} persistido entre auto-refreshes
   txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   txSort: { column: 'date', direction: 'desc' }, // coluna e direção do sort da tabela de Lançamentos
@@ -1374,6 +1365,18 @@ function fmtDate(d) {
 function today() { return new Date().toISOString().split('T')[0]; }
 function monthStart(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; }
 function monthEnd(d = new Date()) { return new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().split('T')[0]; }
+
+// Ordena itens por nome em ordem alfabética (pt-BR, case-insensitive, acento-insensível)
+function sortByName(items) {
+  return (items || []).slice().sort(function(a, b) {
+    return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'pt-BR', { sensitivity: 'base' });
+  });
+}
+
+// Retorna categorias raiz (sem parent_id) ordenadas alfabeticamente
+function getSortedRootCategories() {
+  return sortByName((STATE.categories || []).filter(function(c) { return !c.parent_id || c.parent_id === null; }));
+}
 function monthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
@@ -1459,8 +1462,22 @@ async function api(endpoint, options) {
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
 async function loadAll() {
-  var start = monthStart();
-  var end = monthEnd();
+  // Preserva o período selecionado pelo usuário: usa os inputs de filtro se
+  // já estiverem preenchidos (ou o STATE.txFilterRange), caindo para o mês
+  // atual apenas na primeira carga. Isso evita que o auto-refresh devolva o
+  // período para o mês corrente.
+  var startInput = document.getElementById('filterStart');
+  var endInput = document.getElementById('filterEnd');
+  var startVal = (startInput && startInput.value) || (STATE.txFilterRange && STATE.txFilterRange.start) || monthStart();
+  var endVal = (endInput && endInput.value) || (STATE.txFilterRange && STATE.txFilterRange.end) || monthEnd();
+  STATE.txFilterRange = { start: startVal, end: endVal };
+  // Mantém os inputs sincronizados com o range vigente (sem sobrescrever
+  // se o usuário estiver no meio de uma edição — mas nesses casos o
+  // auto-refresh já é ignorado por isAnyModalOpen).
+  if (startInput && !startInput.value) startInput.value = startVal;
+  if (endInput && !endInput.value) endInput.value = endVal;
+  var start = startVal;
+  var end = endVal;
   var results = await Promise.all([
     api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
     api('categories').catch(function(e){ console.warn('categories', e); return []; }),
@@ -2577,11 +2594,11 @@ function renderDashboard() {
 function renderTransactions() {
   const start = document.getElementById('filterStart');
   const end = document.getElementById('filterEnd');
-  if (!start.value) start.value = monthStart();
-  if (!end.value) end.value = monthEnd();
-  // Sincroniza o select de items por página com o STATE atual
-  const perSel = document.getElementById('filterPerPage');
-  if (perSel) perSel.value = String(STATE.txPerPage);
+  // Usa o range persistido em STATE.txFilterRange se disponível (preserva
+  // o período escolhido pelo usuário), senão cai no mês atual.
+  const range = STATE.txFilterRange || { start: monthStart(), end: monthEnd() };
+  if (!start.value) start.value = range.start;
+  if (!end.value) end.value = range.end;
   STATE.txLastFiltered = [...STATE.transactions];
   populateTxTable(STATE.txLastFiltered);
 }
@@ -2631,6 +2648,8 @@ function getFilteredTransactions() {
 async function applyFilters() {
   const start = document.getElementById('filterStart').value || monthStart();
   const end = document.getElementById('filterEnd').value || monthEnd();
+  // Persiste o range selecionado para que o auto-refresh use o mesmo período
+  STATE.txFilterRange = { start: start, end: end };
   try {
     STATE.transactions = await fetchTransactions(start, end);
     const txs = getFilteredTransactions();
@@ -2641,14 +2660,6 @@ async function applyFilters() {
     console.error(e);
     showError('applyFilters', e);
   }
-}
-
-function setPerPage(v) {
-  const n = parseInt(v, 10);
-  if (isNaN(n)) return;
-  STATE.txPerPage = n;
-  STATE.txPage = 1;
-  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
 }
 
 // Ordena a lista de transações conforme STATE.txSort (imutável)
@@ -2711,11 +2722,8 @@ function updateSortIndicators() {
 
 function populateTxTable(txs) {
   const sorted = sortTxs(txs);
-  const perPage = STATE.txPerPage;
-  const showAll = perPage === -1;
-  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
-  const end = showAll ? sorted.length : start + perPage;
-  const page = sorted.slice(start, end);
+  // Sempre exibe todos os lançamentos do período selecionado (sem paginação).
+  const page = sorted;
   const body = document.getElementById('transactionsBody');
   updateSortIndicators();
 
@@ -2749,33 +2757,13 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Pagination
+  // Exibe o total de lançamentos (sem paginação).
   const pag = document.getElementById('txPagination');
-  if (showAll) {
-    pag.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações</div>`;
-    return;
+  if (pag) {
+    pag.innerHTML = sorted.length
+      ? `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações do período</div>`
+      : '';
   }
-  const totalPages = Math.ceil(sorted.length / perPage);
-  if (totalPages <= 1) { pag.innerHTML = ''; return; }
-
-  // Compact pagination: primeiras 3, atual ±1, últimas 3, com "..."
-  const cur = STATE.txPage;
-  const pagesSet = new Set();
-  [1, 2, 3, totalPages - 2, totalPages - 1, totalPages, cur - 1, cur, cur + 1].forEach(n => {
-    if (n >= 1 && n <= totalPages) pagesSet.add(n);
-  });
-  const pageNums = [...pagesSet].sort((a, b) => a - b);
-  let html = '';
-  // Prev
-  html += `<button class="btn btn-sm btn-secondary" ${cur === 1 ? 'disabled' : ''} onclick="STATE.txPage=${Math.max(1,cur-1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">‹</button>`;
-  let prev = 0;
-  for (const p of pageNums) {
-    if (p - prev > 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
-    html += `<button class="btn btn-sm ${p === cur ? 'btn-primary' : 'btn-secondary'}" onclick="STATE.txPage=${p};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">${p}</button>`;
-    prev = p;
-  }
-  html += `<button class="btn btn-sm btn-secondary" ${cur === totalPages ? 'disabled' : ''} onclick="STATE.txPage=${Math.min(totalPages,cur+1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">›</button>`;
-  pag.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════
@@ -3139,8 +3127,7 @@ function openEditTx(txId) {
   amountEl.style.color = val >= 0 ? 'var(--green-600)' : 'var(--red)';
 
   const catSel = document.getElementById('editTxCategory');
-  catSel.innerHTML = STATE.categories
-    .filter(c => !c.parent_id || c.parent_id === null)
+  catSel.innerHTML = getSortedRootCategories()
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   // Inclui a categoria atual mesmo que seja filha (para não perder referência)
   if (tx.category_id && !STATE.categories.some(c => c.id === tx.category_id && (!c.parent_id || c.parent_id === null))) {
@@ -3306,12 +3293,8 @@ function clearSelection() {
 }
 
 function getVisiblePageTxs() {
-  const txs = STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions;
-  const perPage = STATE.txPerPage;
-  const showAll = perPage === -1;
-  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
-  const end = showAll ? txs.length : start + perPage;
-  return txs.slice(start, end);
+  // Sem paginação: todos os lançamentos do período filtrado estão visíveis.
+  return STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions;
 }
 
 function updateSelectAllCheckbox(visible) {
@@ -3578,10 +3561,9 @@ function openBulkCategorizeModal() {
   const n = STATE.selectedTxIds.size;
   if (!n) return;
   document.getElementById('bulkCatCount').textContent = n;
-  // Popula o dropdown com as categorias (só as raiz)
+  // Popula o dropdown com as categorias raiz em ordem alfabética
   const sel = document.getElementById('bulkCategorySelect');
-  sel.innerHTML = '<option value="">— Escolha uma categoria —</option>' + (STATE.categories || [])
-    .filter(c => !c.parent_id || c.parent_id === null)
+  sel.innerHTML = '<option value="">— Escolha uma categoria —</option>' + getSortedRootCategories()
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   sel.value = '';
   document.getElementById('bulkCategorizeStatus').textContent = '';
@@ -3783,11 +3765,10 @@ async function saveNewCategory() {
 function openModal(type) {
   document.getElementById('txDate').value = today();
   const catSel = document.getElementById('txCategory');
-  catSel.innerHTML = STATE.categories
-    .filter(c => !c.parent_id || c.parent_id === null)
+  catSel.innerHTML = getSortedRootCategories()
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const accSel = document.getElementById('txAccount');
-  accSel.innerHTML = STATE.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  accSel.innerHTML = sortByName(STATE.accounts).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
   document.getElementById('modalBackdrop').classList.add('active');
 }
 
