@@ -839,9 +839,6 @@ tr:hover td { background: var(--bg-card-alt); }
           <div class="form-col"><label>Tipo</label>
             <select id="filterType"><option value="">Todos</option><option value="income">Receitas</option><option value="expense">Despesas</option></select>
           </div>
-          <div class="form-col"><label>Membro</label>
-            <select id="filterMember"><option value="">Todos</option><option value="alfredo">Alfredo</option><option value="esposa">Fabiana</option><option value="familia">Família</option></select>
-          </div>
           <div class="form-col"><label>Buscar</label><input type="text" id="filterSearch" placeholder="Descrição..." /></div>
           <div class="form-col"><label>Por página</label>
             <select id="filterPerPage" onchange="setPerPage(this.value)">
@@ -857,9 +854,14 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
       </div>
       <div class="card">
+        <div id="selectionBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <span id="selectionCount" style="font-weight:600;color:var(--green-800);">0 selecionado(s)</span>
+          <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🤖 Categorizar selecionados</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearSelection()">✕ Limpar seleção</button>
+        </div>
         <div class="table-container">
           <table>
-            <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Membro</th><th>Valor</th></tr></thead>
+            <thead><tr><th style="width:34px;"><input type="checkbox" id="selectAllTxs" onchange="toggleSelectAll(this.checked)" title="Selecionar todos visíveis" /></th><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
             <tbody id="transactionsBody"></tbody>
           </table>
         </div>
@@ -998,15 +1000,16 @@ tr:hover td { background: var(--bg-card-alt); }
     </div>
     <div class="form-row">
       <div class="form-col"><label>Valor (R$)</label><input type="number" id="txAmount" step="0.01" placeholder="0,00" /></div>
-      <div class="form-col"><label>Categoria</label><select id="txCategory"></select></div>
-    </div>
-    <div class="form-row">
-      <div class="form-col"><label>Conta</label><select id="txAccount"></select></div>
-      <div class="form-col"><label>Membro</label>
-        <select id="txMember"><option value="familia">👨‍👩‍👧 Família</option><option value="alfredo">👨‍⚕️ Alfredo</option><option value="esposa">👩‍⚕️ Fabiana</option></select>
+      <div class="form-col">
+        <label>Categoria</label>
+        <div style="display:flex;gap:6px;">
+          <select id="txCategory" style="flex:1;"></select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openNewCategoryModal('txCategory')" title="Criar nova categoria">➕</button>
+        </div>
       </div>
     </div>
     <div class="form-row">
+      <div class="form-col"><label>Conta</label><select id="txAccount"></select></div>
       <div class="form-col"><label>Observações</label><input type="text" id="txNotes" placeholder="Notas adicionais..." /></div>
     </div>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
@@ -1039,7 +1042,10 @@ tr:hover td { background: var(--bg-card-alt); }
     <div class="form-row">
       <div class="form-col">
         <label>Categoria</label>
-        <select id="editTxCategory"></select>
+        <div style="display:flex;gap:6px;">
+          <select id="editTxCategory" style="flex:1;"></select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openNewCategoryModal('editTxCategory')" title="Criar nova categoria">➕</button>
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center;">
@@ -1050,6 +1056,38 @@ tr:hover td { background: var(--bg-card-alt); }
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveEditTx" onclick="saveEditTransaction()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL (nova categoria) ═══════════ -->
+<div class="modal-backdrop" id="newCategoryBackdrop" onclick="closeNewCategoryModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:420px;">
+    <h3>➕ Nova categoria</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.</p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Nome</label>
+        <input type="text" id="newCategoryName" placeholder="Ex: Pet, Academia, Viagens..." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Tipo</label>
+        <select id="newCategoryKind">
+          <option value="expense">💸 Despesa</option>
+          <option value="income">💰 Receita</option>
+        </select>
+      </div>
+      <div class="form-col">
+        <label>Cor</label>
+        <input type="color" id="newCategoryColor" value="#43A047" style="width:100%;height:42px;padding:4px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);cursor:pointer;" />
+      </div>
+    </div>
+    <div id="newCategoryStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeNewCategoryModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveNewCategory" onclick="saveNewCategory()">💾 Criar categoria</button>
     </div>
   </div>
 </div>
@@ -1112,6 +1150,7 @@ let STATE = {
   txPage: 1,
   txPerPage: 25,
   txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
+  selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   reportMonths: 6,
 };
 const CHARTS = {};
@@ -1901,9 +1940,6 @@ function getFilteredTransactions() {
   const type = typeEl ? typeEl.value : '';
   if (type === 'income') txs = txs.filter(t => (t.amount_cents || t.amount * 100) > 0);
   if (type === 'expense') txs = txs.filter(t => (t.amount_cents || t.amount * 100) < 0);
-  const memEl = document.getElementById('filterMember');
-  const member = memEl ? memEl.value : '';
-  if (member) txs = txs.filter(t => guessMember(t.description) === member);
   const searchEl = document.getElementById('filterSearch');
   const search = searchEl ? searchEl.value.toLowerCase() : '';
   if (search) txs = txs.filter(t => (t.description || '').toLowerCase().includes(search));
@@ -1947,16 +1983,20 @@ function populateTxTable(txs) {
     body.innerHTML = page.map(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
-      const mem = guessMember(t.description);
+      const checked = STATE.selectedTxIds.has(t.id) ? 'checked' : '';
       return `<tr style="cursor:pointer;" onclick="openEditTx(${t.id})" title="Clique para editar">
+        <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
         <td>${t.description || '—'}</td>
         <td>${cat}</td>
-        <td>${memberTagHTML(mem)}</td>
         <td style="font-family:'Space Mono',monospace;font-weight:600;color:${val >= 0 ? 'var(--green-600)' : 'var(--red)'}">${centsToReal(val)}</td>
       </tr>`;
     }).join('');
   }
+
+  // Sincroniza o checkbox "selecionar todos" com o estado
+  updateSelectAllCheckbox(page);
+  updateSelectionBar();
 
   // Pagination
   const pag = document.getElementById('txPagination');
@@ -2042,19 +2082,16 @@ function exportPDF() {
     const rows = txs.map(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '-';
-      const mem = guessMember(t.description);
-      const memLabel = mem === 'alfredo' ? 'Alfredo' : mem === 'esposa' ? 'Fabiana' : 'Familia';
       return [
         fmtDate(t.date),
-        (t.description || '-').substring(0, 50),
-        cat.substring(0, 20),
-        memLabel,
+        (t.description || '-').substring(0, 60),
+        cat.substring(0, 24),
         centsToReal(val).replace('R$', 'R$ ')
       ];
     });
 
     doc.autoTable({
-      head: [['Data', 'Descricao', 'Categoria', 'Membro', 'Valor']],
+      head: [['Data', 'Descricao', 'Categoria', 'Valor']],
       body: rows,
       startY: 55,
       theme: 'striped',
@@ -2064,12 +2101,11 @@ function exportPDF() {
       columnStyles: {
         0: { cellWidth: 22 },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 28 },
-        3: { cellWidth: 22 },
-        4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+        2: { cellWidth: 36 },
+        3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && data.column.index === 4) {
+        if (data.section === 'body' && data.column.index === 3) {
           const raw = data.cell.raw;
           if (typeof raw === 'string' && raw.indexOf('-') !== -1) {
             data.cell.styles.textColor = [198, 40, 40];
@@ -2131,17 +2167,14 @@ function exportPrint() {
     html += '<span>💸 <strong>Despesas:</strong> <span class="neg">' + centsToReal(totals.expense) + '</span></span>';
     html += '<span>📊 <strong>Saldo:</strong> <span class="' + (totals.net >= 0 ? 'pos' : 'neg') + '">' + centsToReal(totals.net) + '</span></span>';
     html += '</div>';
-    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Membro</th><th class="right">Valor</th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="right">Valor</th></tr></thead><tbody>';
     txs.forEach(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
-      const mem = guessMember(t.description);
-      const memLabel = mem === 'alfredo' ? '👨‍⚕️ Alfredo' : mem === 'esposa' ? '👩‍⚕️ Fabiana' : '👨‍👩‍👧 Família';
       html += '<tr>';
       html += '<td>' + esc(fmtDate(t.date)) + '</td>';
       html += '<td>' + esc(t.description || '—') + '</td>';
       html += '<td>' + esc(cat) + '</td>';
-      html += '<td>' + memLabel + '</td>';
       html += '<td class="right ' + (val >= 0 ? 'pos' : 'neg') + '">' + centsToReal(val) + '</td>';
       html += '</tr>';
     });
@@ -2467,16 +2500,99 @@ async function saveEditTransaction() {
 }
 
 // ═══════════════════════════════════════════════
+//  SELEÇÃO MÚLTIPLA DE LANÇAMENTOS
+// ═══════════════════════════════════════════════
+function toggleSelectTx(txId, checked) {
+  if (checked) STATE.selectedTxIds.add(txId);
+  else STATE.selectedTxIds.delete(txId);
+  updateSelectionBar();
+  // Atualiza o "select all" para refletir o estado atual
+  const visible = getVisiblePageTxs();
+  updateSelectAllCheckbox(visible);
+}
+
+function toggleSelectAll(checked) {
+  const visible = getVisiblePageTxs();
+  if (checked) visible.forEach(t => STATE.selectedTxIds.add(t.id));
+  else visible.forEach(t => STATE.selectedTxIds.delete(t.id));
+  // Re-renderiza a página atual para atualizar os checkboxes individuais
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+}
+
+function clearSelection() {
+  STATE.selectedTxIds.clear();
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+}
+
+function getVisiblePageTxs() {
+  const txs = STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions;
+  const perPage = STATE.txPerPage;
+  const showAll = perPage === -1;
+  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
+  const end = showAll ? txs.length : start + perPage;
+  return txs.slice(start, end);
+}
+
+function updateSelectAllCheckbox(visible) {
+  const el = document.getElementById('selectAllTxs');
+  if (!el) return;
+  if (!visible.length) {
+    el.checked = false;
+    el.indeterminate = false;
+    return;
+  }
+  const selectedOnPage = visible.filter(t => STATE.selectedTxIds.has(t.id)).length;
+  if (selectedOnPage === 0) {
+    el.checked = false;
+    el.indeterminate = false;
+  } else if (selectedOnPage === visible.length) {
+    el.checked = true;
+    el.indeterminate = false;
+  } else {
+    el.checked = false;
+    el.indeterminate = true;
+  }
+}
+
+function updateSelectionBar() {
+  const bar = document.getElementById('selectionBar');
+  const count = document.getElementById('selectionCount');
+  if (!bar || !count) return;
+  const n = STATE.selectedTxIds.size;
+  if (n === 0) {
+    bar.style.display = 'none';
+  } else {
+    bar.style.display = 'flex';
+    count.textContent = n + ' selecionado' + (n === 1 ? '' : 's');
+  }
+}
+
+// ═══════════════════════════════════════════════
 //  CATEGORIZAÇÃO EM MASSA
 // ═══════════════════════════════════════════════
+// Categoriza todos os lançamentos visíveis (respeitando filtros)
 async function bulkCategorize() {
   const txs = txsForExport();
   if (!txs.length) {
     alert('Nenhum lançamento visível para categorizar.');
     return;
   }
+  return _applyBulkSuggestions(txs, 'todos os lançamentos filtrados');
+}
 
-  // Pré-calcula sugestões com a heurística local
+// Categoriza apenas os lançamentos selecionados via checkbox
+async function bulkCategorizeSelected() {
+  const selectedIds = Array.from(STATE.selectedTxIds);
+  if (!selectedIds.length) {
+    alert('Nenhum lançamento selecionado.');
+    return;
+  }
+  const txs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
+  return _applyBulkSuggestions(txs, selectedIds.length + ' selecionado(s)');
+}
+
+// Helper compartilhado por bulkCategorize e bulkCategorizeSelected
+async function _applyBulkSuggestions(txs, scopeLabel) {
   const suggestions = [];
   txs.forEach(t => {
     const suggestedId = suggestCategoryId(t.description, STATE.categories);
@@ -2488,11 +2604,12 @@ async function bulkCategorize() {
   });
 
   if (!suggestions.length) {
-    alert('🤖 Nenhuma sugestão nova encontrada para os lançamentos filtrados.');
+    alert('🤖 Nenhuma sugestão nova encontrada em ' + scopeLabel + '.');
     return;
   }
 
-  const msg = '🤖 ' + suggestions.length + ' lançamentos podem ser recategorizados:\n\n'
+  const msg = '🤖 ' + suggestions.length + ' lançamento' + (suggestions.length === 1 ? '' : 's')
+    + ' podem ser recategorizados (de ' + scopeLabel + '):\n\n'
     + suggestions.slice(0, 10).map(s =>
         '• "' + (s.tx.description || '').substring(0, 35) + '"\n    ' + s.oldCat + ' → ' + s.newCat
       ).join('\n')
@@ -2519,7 +2636,89 @@ async function bulkCategorize() {
     }
   }
   populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
-  alert('✅ ' + ok + ' categorizados' + (fail ? ' · ❌ ' + fail + ' falhas' : '') + '.');
+  alert('✅ ' + ok + ' categorizado' + (ok === 1 ? '' : 's')
+    + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '.');
+}
+
+// ═══════════════════════════════════════════════
+//  CRIAR NOVA CATEGORIA (via POST /api/proxy?endpoint=categories)
+// ═══════════════════════════════════════════════
+// Guarda qual dropdown deve ser atualizado após criar a categoria.
+function openNewCategoryModal(targetSelectId) {
+  APP.__newCategoryTarget = targetSelectId || null;
+  document.getElementById('newCategoryName').value = '';
+  document.getElementById('newCategoryKind').value = 'expense';
+  document.getElementById('newCategoryColor').value = '#43A047';
+  document.getElementById('newCategoryStatus').textContent = '';
+  document.getElementById('newCategoryBackdrop').classList.add('active');
+  setTimeout(function() {
+    const el = document.getElementById('newCategoryName');
+    if (el) el.focus();
+  }, 50);
+}
+
+function closeNewCategoryModal(e) {
+  if (e && e.target !== document.getElementById('newCategoryBackdrop')) return;
+  document.getElementById('newCategoryBackdrop').classList.remove('active');
+  APP.__newCategoryTarget = null;
+}
+
+async function saveNewCategory() {
+  const name = document.getElementById('newCategoryName').value.trim();
+  const kind = document.getElementById('newCategoryKind').value;
+  const color = document.getElementById('newCategoryColor').value;
+  const status = document.getElementById('newCategoryStatus');
+  const btn = document.getElementById('btnSaveNewCategory');
+
+  if (!name) {
+    status.innerHTML = '<span style="color:var(--red);">Informe um nome.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Criando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Enviando ao Organizze...</span>';
+
+  try {
+    // Organizze API: POST /categories com { name, color, kind? }
+    // kind não é um campo oficial; transações expense/income são diferenciadas
+    // pelo sinal do valor. Mas mandamos essa info pra referência futura.
+    const payload = { name: name, color: color };
+    const created = await api('categories', { method: 'POST', body: payload });
+
+    if (!created || !created.id) {
+      status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
+      btn.disabled = false;
+      btn.textContent = '💾 Criar categoria';
+      return;
+    }
+
+    // Adiciona ao STATE e re-seleciona no dropdown alvo
+    STATE.categories.push(created);
+    if (APP.__newCategoryTarget) {
+      const sel = document.getElementById(APP.__newCategoryTarget);
+      if (sel) {
+        const opt = document.createElement('option');
+        opt.value = created.id;
+        opt.textContent = created.name;
+        sel.appendChild(opt);
+        sel.value = created.id;
+      }
+    }
+
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Categoria criada!</span>';
+    setTimeout(function() {
+      document.getElementById('newCategoryBackdrop').classList.remove('active');
+      APP.__newCategoryTarget = null;
+      btn.disabled = false;
+      btn.textContent = '💾 Criar categoria';
+    }, 700);
+  } catch (e) {
+    showError('saveNewCategory', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '💾 Criar categoria';
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -2547,10 +2746,9 @@ async function saveTransaction() {
   if (!amount || amount <= 0) return alert('Informe um valor válido.');
 
   const finalAmount = type === '-' ? -amount : amount;
-  const member = document.getElementById('txMember').value;
   const desc = document.getElementById('txDesc').value;
   const notes = document.getElementById('txNotes').value;
-  const fullDesc = desc + (notes ? ` [${notes}]` : '') + ` #${member}`;
+  const fullDesc = desc + (notes ? ` [${notes}]` : '');
 
   const payload = {
     description: fullDesc,
