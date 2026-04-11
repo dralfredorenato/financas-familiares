@@ -885,6 +885,24 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
       </div>
       <div class="card">
+        <div id="txSummaryBar" style="display:none;align-items:center;justify-content:space-around;gap:16px;padding:14px 18px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">📈 Receitas</div>
+            <div id="txSummaryIncome" style="font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:var(--green-600);margin-top:2px;">R$ 0,00</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">📉 Despesas</div>
+            <div id="txSummaryExpense" style="font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:var(--red);margin-top:2px;">R$ 0,00</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">💰 Saldo do período</div>
+            <div id="txSummaryNet" style="font-family:'Space Mono',monospace;font-size:18px;font-weight:700;margin-top:2px;">R$ 0,00</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">🧾 Lançamentos</div>
+            <div id="txSummaryCount" style="font-size:18px;font-weight:700;color:var(--text);margin-top:2px;">0</div>
+          </div>
+        </div>
         <div id="selectionBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
           <span id="selectionCount" style="font-weight:600;color:var(--green-800);">0 selecionado(s)</span>
           <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🏷️ Categorizar selecionados</button>
@@ -3028,12 +3046,36 @@ function updateSortIndicators() {
   });
 }
 
+// Atualiza a barra de resumo no topo de Lançamentos: Receitas, Despesas,
+// Saldo e Nº de lançamentos do período selecionado. Usa getTotalsFromTxs,
+// que já ignora pagamentos de fatura.
+function updateTxSummaryBar(txs) {
+  const bar = document.getElementById('txSummaryBar');
+  if (!bar) return;
+  const list = Array.isArray(txs) ? txs : [];
+  if (!list.length) {
+    bar.style.display = 'none';
+    return;
+  }
+  const totals = getTotalsFromTxs(list);
+  document.getElementById('txSummaryIncome').textContent = centsToReal(totals.income);
+  document.getElementById('txSummaryExpense').textContent = centsToReal(totals.expense);
+  const netEl = document.getElementById('txSummaryNet');
+  netEl.textContent = centsToReal(totals.net);
+  netEl.style.color = totals.net >= 0 ? 'var(--green-600)' : 'var(--red)';
+  document.getElementById('txSummaryCount').textContent = String(list.length);
+  bar.style.display = 'flex';
+}
+
 function populateTxTable(txs) {
   const sorted = sortTxs(txs);
   // Sempre exibe todos os lançamentos do período selecionado (sem paginação).
   const page = sorted;
   const body = document.getElementById('transactionsBody');
   updateSortIndicators();
+
+  // Atualiza a barra de resumo (totais já ignoram pagamentos de fatura)
+  updateTxSummaryBar(sorted);
 
   // Contabiliza pagamentos de fatura excluídos (para mostrar no rodapé)
   let excludedCount = 0;
