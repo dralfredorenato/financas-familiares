@@ -815,6 +815,7 @@ tr:hover td { background: var(--bg-card-alt); }
     <div class="nav-item" data-page="cards"><span class="emoji">💎</span> Cartões</div>
     <div class="nav-item" data-page="family"><span class="emoji">👨‍👩‍👧</span> Família</div>
     <div class="nav-item" data-page="reports"><span class="emoji">📈</span> Relatórios</div>
+    <div class="nav-item" data-page="manage"><span class="emoji">🗂️</span> Gerenciar</div>
     <div class="nav-item" data-page="settings"><span class="emoji">⚙️</span> Configurações</div>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">🚪 Sair</button>
@@ -880,23 +881,13 @@ tr:hover td { background: var(--bg-card-alt); }
             <select id="filterType"><option value="">Todos</option><option value="income">Receitas</option><option value="expense">Despesas</option></select>
           </div>
           <div class="form-col"><label>Buscar</label><input type="text" id="filterSearch" placeholder="Descrição..." /></div>
-          <div class="form-col"><label>Por página</label>
-            <select id="filterPerPage" onchange="setPerPage(this.value)">
-              <option value="10">10</option>
-              <option value="25" selected>25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-              <option value="200">200</option>
-              <option value="-1">Todas</option>
-            </select>
-          </div>
           <div class="form-col" style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="applyFilters()">Filtrar</button></div>
         </div>
       </div>
       <div class="card">
         <div id="selectionBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
           <span id="selectionCount" style="font-weight:600;color:var(--green-800);">0 selecionado(s)</span>
-          <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🤖 Categorizar selecionados</button>
+          <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🏷️ Categorizar selecionados</button>
           <button class="btn btn-secondary btn-sm" onclick="clearSelection()">✕ Limpar seleção</button>
         </div>
         <div class="table-container">
@@ -1004,6 +995,71 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
 
+    <!-- ═══ MANAGE (Categorias / Contas) ═══ -->
+    <div class="page" id="page-manage">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🗂️ Gerenciar</span>
+          <div id="manageTabBtns" style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-primary" data-manage-tab="categories" onclick="switchManageTab('categories')">🏷️ Categorias</button>
+            <button class="btn btn-sm btn-secondary" data-manage-tab="accounts" onclick="switchManageTab('accounts')">🏦 Contas</button>
+          </div>
+        </div>
+        <p style="color:var(--text-secondary);font-size:13px;margin:4px 0 0;line-height:1.5;">
+          Crie, edite e exclua suas categorias de gastos e suas contas bancárias. Mudanças são enviadas diretamente para o Organizze.
+        </p>
+      </div>
+
+      <!-- Tab: Categorias -->
+      <div class="card" id="manageTabCategories">
+        <div class="card-header">
+          <span class="card-title">🏷️ Categorias de gastos</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="openNewCategoryModal()">➕ Nova categoria</button>
+          </div>
+        </div>
+        <div id="manageCategoriesStatus" style="font-size:13px;margin:6px 0 12px;min-height:18px;color:var(--text-secondary);"></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:48px;">Cor</th>
+                <th>Nome</th>
+                <th style="text-align:right;">Lançamentos</th>
+                <th style="width:160px;text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="manageCategoriesBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Contas -->
+      <div class="card" id="manageTabAccounts" style="display:none;">
+        <div class="card-header">
+          <span class="card-title">🏦 Contas bancárias</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="openAccountModal()">➕ Nova conta</button>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;">Para cartões de crédito use o módulo "Cartões".</p>
+        <div id="manageAccountsStatus" style="font-size:13px;margin:6px 0 12px;min-height:18px;color:var(--text-secondary);"></div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+                <th style="text-align:right;">Lançamentos</th>
+                <th style="width:160px;text-align:right;">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="manageAccountsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ SETTINGS ═══ -->
     <div class="page" id="page-settings">
       <div class="card">
@@ -1065,8 +1121,8 @@ tr:hover td { background: var(--bg-card-alt); }
         <span><strong>Adicionar aos Gastos Fixos</strong><br><span style="font-size:11px;color:var(--text-muted);">Copia os selecionados como contas fixas mensais</span></span>
       </button>
       <button class="fab-action-btn" onclick="bulkCategorizeSelected();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
-        <span style="font-size:22px;">🤖</span>
-        <span><strong>Categorizar selecionados</strong><br><span style="font-size:11px;color:var(--text-muted);">Aplica sugestões de IA local</span></span>
+        <span style="font-size:22px;">🏷️</span>
+        <span><strong>Categorizar selecionados</strong><br><span style="font-size:11px;color:var(--text-muted);">Escolha a categoria e aplique a todos</span></span>
       </button>
       <button class="fab-action-btn" onclick="clearSelection();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
         <span style="font-size:22px;">✕</span>
@@ -1162,11 +1218,11 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
-<!-- ═══════════ MODAL (nova categoria) ═══════════ -->
+<!-- ═══════════ MODAL (nova/editar categoria) ═══════════ -->
 <div class="modal-backdrop" id="newCategoryBackdrop" onclick="closeNewCategoryModal(event)">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:420px;">
-    <h3>➕ Nova categoria</h3>
-    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.</p>
+    <h3 id="newCategoryTitle">➕ Nova categoria</h3>
+    <p id="newCategoryHelp" style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.</p>
     <div class="form-row">
       <div class="form-col">
         <label>Nome</label>
@@ -1187,9 +1243,50 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
     <div id="newCategoryStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
-    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
-      <button class="btn btn-secondary" onclick="closeNewCategoryModal()">Cancelar</button>
-      <button class="btn btn-primary" id="btnSaveNewCategory" onclick="saveNewCategory()">💾 Criar categoria</button>
+    <div style="display:flex;gap:12px;justify-content:space-between;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" id="btnDeleteCategory" class="btn btn-secondary" onclick="deleteCategoryFromModal()" style="display:none;color:var(--red);border-color:var(--red);">🗑️ Excluir</button>
+      <div style="display:flex;gap:12px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeNewCategoryModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveNewCategory" onclick="saveNewCategory()">💾 Criar categoria</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL (editar conta bancária) ═══════════ -->
+<div class="modal-backdrop" id="accountBackdrop" onclick="closeAccountModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <h3 id="accountModalTitle">➕ Nova conta</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">As contas são sincronizadas com o Organizze. Cartões de crédito ficam no módulo "Cartões".</p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Nome</label>
+        <input type="text" id="accountName" placeholder="Ex: Banco do Brasil, Nubank, Carteira..." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Tipo</label>
+        <select id="accountType">
+          <option value="checking">Corrente</option>
+          <option value="savings">Poupança</option>
+          <option value="investment">Investimento</option>
+          <option value="cash">Dinheiro / Carteira</option>
+          <option value="other_kind">Outros</option>
+        </select>
+      </div>
+      <div class="form-col">
+        <label>Descrição (opcional)</label>
+        <input type="text" id="accountDescription" placeholder="Ex: conta conjunta" />
+      </div>
+    </div>
+    <div id="accountStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:space-between;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" id="btnDeleteAccount" class="btn btn-secondary" onclick="deleteAccountFromModal()" style="display:none;color:var(--red);border-color:var(--red);">🗑️ Excluir</button>
+      <div style="display:flex;gap:12px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeAccountModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveAccount" onclick="saveAccount()">💾 Salvar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1260,6 +1357,30 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
+<!-- ═══════════ MODAL (categorizar selecionados manualmente) ═══════════ -->
+<div class="modal-backdrop" id="bulkCategorizeBackdrop" onclick="closeBulkCategorizeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;">
+    <h3>🏷️ Categorizar lançamentos selecionados</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;line-height:1.5;">
+      Aplicar a mesma categoria a <strong id="bulkCatCount">N</strong> lançamentos selecionados.
+    </p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Categoria</label>
+        <div style="display:flex;gap:6px;">
+          <select id="bulkCategorySelect" style="flex:1;"></select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openNewCategoryModal('bulkCategorySelect')" title="Criar nova categoria">➕</button>
+        </div>
+      </div>
+    </div>
+    <div id="bulkCategorizeStatus" style="font-size:13px;margin:12px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeBulkCategorizeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnBulkCategorize" onclick="saveBulkCategorize()">💾 Aplicar a todos</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ FORCE CHANGE PASSWORD OVERLAY ═══════════ -->
 <div id="forceChangeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--bg-card);border-radius:20px;padding:32px 28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
@@ -1316,7 +1437,8 @@ let STATE = {
   invoices: {},
   currentPage: 'dashboard',
   txPage: 1,
-  txPerPage: 25,
+  txPerPage: -1, // sempre mostra todos os lançamentos do período selecionado
+  txFilterRange: null, // {start, end} persistido entre auto-refreshes
   txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   txSort: { column: 'date', direction: 'desc' }, // coluna e direção do sort da tabela de Lançamentos
@@ -1350,6 +1472,18 @@ function fmtDate(d) {
 function today() { return new Date().toISOString().split('T')[0]; }
 function monthStart(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]; }
 function monthEnd(d = new Date()) { return new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().split('T')[0]; }
+
+// Ordena itens por nome em ordem alfabética (pt-BR, case-insensitive, acento-insensível)
+function sortByName(items) {
+  return (items || []).slice().sort(function(a, b) {
+    return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'pt-BR', { sensitivity: 'base' });
+  });
+}
+
+// Retorna categorias raiz (sem parent_id) ordenadas alfabeticamente
+function getSortedRootCategories() {
+  return sortByName((STATE.categories || []).filter(function(c) { return !c.parent_id || c.parent_id === null; }));
+}
 function monthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
@@ -1435,8 +1569,22 @@ async function api(endpoint, options) {
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
 async function loadAll() {
-  var start = monthStart();
-  var end = monthEnd();
+  // Preserva o período selecionado pelo usuário: usa os inputs de filtro se
+  // já estiverem preenchidos (ou o STATE.txFilterRange), caindo para o mês
+  // atual apenas na primeira carga. Isso evita que o auto-refresh devolva o
+  // período para o mês corrente.
+  var startInput = document.getElementById('filterStart');
+  var endInput = document.getElementById('filterEnd');
+  var startVal = (startInput && startInput.value) || (STATE.txFilterRange && STATE.txFilterRange.start) || monthStart();
+  var endVal = (endInput && endInput.value) || (STATE.txFilterRange && STATE.txFilterRange.end) || monthEnd();
+  STATE.txFilterRange = { start: startVal, end: endVal };
+  // Mantém os inputs sincronizados com o range vigente (sem sobrescrever
+  // se o usuário estiver no meio de uma edição — mas nesses casos o
+  // auto-refresh já é ignorado por isAnyModalOpen).
+  if (startInput && !startInput.value) startInput.value = startVal;
+  if (endInput && !endInput.value) endInput.value = endVal;
+  var start = startVal;
+  var end = endVal;
   var results = await Promise.all([
     api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
     api('categories').catch(function(e){ console.warn('categories', e); return []; }),
@@ -1486,7 +1634,7 @@ setInterval(updateRefreshLabel, 30 * 1000);
 
 function isAnyModalOpen() {
   // Evita atropelar o usuário durante edição
-  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'forceChangeOverlay'];
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'accountBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'bulkCategorizeBackdrop', 'forceChangeOverlay'];
   for (var i = 0; i < candidates.length; i++) {
     var el = document.getElementById(candidates[i]);
     if (!el) continue;
@@ -2362,6 +2510,7 @@ const pageTitles = {
   cards: '💎 Cartões',
   family: '👨‍👩‍👧 Família',
   reports: '📈 Relatórios',
+  manage: '🗂️ Gerenciar',
   settings: '⚙️ Configurações',
 };
 
@@ -2388,6 +2537,7 @@ function renderPage(page) {
     case 'cards': renderCards(); break;
     case 'family': renderFamily(); break;
     case 'reports': renderReports(); break;
+    case 'manage': renderManage(); break;
     case 'settings': renderSettings(); break;
   }
 }
@@ -2553,11 +2703,11 @@ function renderDashboard() {
 function renderTransactions() {
   const start = document.getElementById('filterStart');
   const end = document.getElementById('filterEnd');
-  if (!start.value) start.value = monthStart();
-  if (!end.value) end.value = monthEnd();
-  // Sincroniza o select de items por página com o STATE atual
-  const perSel = document.getElementById('filterPerPage');
-  if (perSel) perSel.value = String(STATE.txPerPage);
+  // Usa o range persistido em STATE.txFilterRange se disponível (preserva
+  // o período escolhido pelo usuário), senão cai no mês atual.
+  const range = STATE.txFilterRange || { start: monthStart(), end: monthEnd() };
+  if (!start.value) start.value = range.start;
+  if (!end.value) end.value = range.end;
   STATE.txLastFiltered = [...STATE.transactions];
   populateTxTable(STATE.txLastFiltered);
 }
@@ -2607,6 +2757,8 @@ function getFilteredTransactions() {
 async function applyFilters() {
   const start = document.getElementById('filterStart').value || monthStart();
   const end = document.getElementById('filterEnd').value || monthEnd();
+  // Persiste o range selecionado para que o auto-refresh use o mesmo período
+  STATE.txFilterRange = { start: start, end: end };
   try {
     STATE.transactions = await fetchTransactions(start, end);
     const txs = getFilteredTransactions();
@@ -2617,14 +2769,6 @@ async function applyFilters() {
     console.error(e);
     showError('applyFilters', e);
   }
-}
-
-function setPerPage(v) {
-  const n = parseInt(v, 10);
-  if (isNaN(n)) return;
-  STATE.txPerPage = n;
-  STATE.txPage = 1;
-  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
 }
 
 // Ordena a lista de transações conforme STATE.txSort (imutável)
@@ -2687,11 +2831,8 @@ function updateSortIndicators() {
 
 function populateTxTable(txs) {
   const sorted = sortTxs(txs);
-  const perPage = STATE.txPerPage;
-  const showAll = perPage === -1;
-  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
-  const end = showAll ? sorted.length : start + perPage;
-  const page = sorted.slice(start, end);
+  // Sempre exibe todos os lançamentos do período selecionado (sem paginação).
+  const page = sorted;
   const body = document.getElementById('transactionsBody');
   updateSortIndicators();
 
@@ -2725,33 +2866,13 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Pagination
+  // Exibe o total de lançamentos (sem paginação).
   const pag = document.getElementById('txPagination');
-  if (showAll) {
-    pag.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações</div>`;
-    return;
+  if (pag) {
+    pag.innerHTML = sorted.length
+      ? `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações do período</div>`
+      : '';
   }
-  const totalPages = Math.ceil(sorted.length / perPage);
-  if (totalPages <= 1) { pag.innerHTML = ''; return; }
-
-  // Compact pagination: primeiras 3, atual ±1, últimas 3, com "..."
-  const cur = STATE.txPage;
-  const pagesSet = new Set();
-  [1, 2, 3, totalPages - 2, totalPages - 1, totalPages, cur - 1, cur, cur + 1].forEach(n => {
-    if (n >= 1 && n <= totalPages) pagesSet.add(n);
-  });
-  const pageNums = [...pagesSet].sort((a, b) => a - b);
-  let html = '';
-  // Prev
-  html += `<button class="btn btn-sm btn-secondary" ${cur === 1 ? 'disabled' : ''} onclick="STATE.txPage=${Math.max(1,cur-1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">‹</button>`;
-  let prev = 0;
-  for (const p of pageNums) {
-    if (p - prev > 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
-    html += `<button class="btn btn-sm ${p === cur ? 'btn-primary' : 'btn-secondary'}" onclick="STATE.txPage=${p};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">${p}</button>`;
-    prev = p;
-  }
-  html += `<button class="btn btn-sm btn-secondary" ${cur === totalPages ? 'disabled' : ''} onclick="STATE.txPage=${Math.min(totalPages,cur+1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">›</button>`;
-  pag.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════
@@ -3115,8 +3236,7 @@ function openEditTx(txId) {
   amountEl.style.color = val >= 0 ? 'var(--green-600)' : 'var(--red)';
 
   const catSel = document.getElementById('editTxCategory');
-  catSel.innerHTML = STATE.categories
-    .filter(c => !c.parent_id || c.parent_id === null)
+  catSel.innerHTML = getSortedRootCategories()
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   // Inclui a categoria atual mesmo que seja filha (para não perder referência)
   if (tx.category_id && !STATE.categories.some(c => c.id === tx.category_id && (!c.parent_id || c.parent_id === null))) {
@@ -3282,12 +3402,8 @@ function clearSelection() {
 }
 
 function getVisiblePageTxs() {
-  const txs = STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions;
-  const perPage = STATE.txPerPage;
-  const showAll = perPage === -1;
-  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
-  const end = showAll ? txs.length : start + perPage;
-  return txs.slice(start, end);
+  // Sem paginação: todos os lançamentos do período filtrado estão visíveis.
+  return STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions;
 }
 
 function updateSelectAllCheckbox(visible) {
@@ -3539,15 +3655,87 @@ async function bulkCategorize() {
   return _applyBulkSuggestions(txs, 'todos os lançamentos filtrados');
 }
 
-// Categoriza apenas os lançamentos selecionados via checkbox
-async function bulkCategorizeSelected() {
+// Abre modal manual para categorizar os selecionados (SEM IA)
+function bulkCategorizeSelected() {
+  hideFabMenu();
   const selectedIds = Array.from(STATE.selectedTxIds);
   if (!selectedIds.length) {
     alert('Nenhum lançamento selecionado.');
     return;
   }
-  const txs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
-  return _applyBulkSuggestions(txs, selectedIds.length + ' selecionado(s)');
+  openBulkCategorizeModal();
+}
+
+function openBulkCategorizeModal() {
+  const n = STATE.selectedTxIds.size;
+  if (!n) return;
+  document.getElementById('bulkCatCount').textContent = n;
+  // Popula o dropdown com as categorias raiz em ordem alfabética
+  const sel = document.getElementById('bulkCategorySelect');
+  sel.innerHTML = '<option value="">— Escolha uma categoria —</option>' + getSortedRootCategories()
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.value = '';
+  document.getElementById('bulkCategorizeStatus').textContent = '';
+  document.getElementById('bulkCategorizeBackdrop').classList.add('active');
+}
+
+function closeBulkCategorizeModal(e) {
+  if (e && e.target !== document.getElementById('bulkCategorizeBackdrop')) return;
+  document.getElementById('bulkCategorizeBackdrop').classList.remove('active');
+}
+
+async function saveBulkCategorize() {
+  const sel = document.getElementById('bulkCategorySelect');
+  const status = document.getElementById('bulkCategorizeStatus');
+  const btn = document.getElementById('btnBulkCategorize');
+  const newCategoryId = parseInt(sel.value, 10);
+  if (isNaN(newCategoryId)) {
+    status.innerHTML = '<span style="color:var(--red);">Escolha uma categoria.</span>';
+    return;
+  }
+  const selectedIds = Array.from(STATE.selectedTxIds);
+  if (!selectedIds.length) {
+    status.innerHTML = '<span style="color:var(--red);">Nenhum lançamento selecionado.</span>';
+    return;
+  }
+  const targetTxs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
+  // Se todos já estão na mesma categoria, avisa
+  const changing = targetTxs.filter(t => t.category_id !== newCategoryId);
+  if (!changing.length) {
+    status.innerHTML = '<span style="color:var(--orange);">Todos os selecionados já estão nessa categoria.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + changing.length + ' lançamento' + (changing.length === 1 ? '' : 's') + '...</span>';
+
+  let ok = 0, fail = 0;
+  for (const tx of changing) {
+    try {
+      await api('transactions/' + tx.id, {
+        method: 'PUT',
+        body: { category_id: newCategoryId }
+      });
+      tx.category_id = newCategoryId;
+      if (Array.isArray(STATE.txLastFiltered)) {
+        const found = STATE.txLastFiltered.find(t => t.id === tx.id);
+        if (found) found.category_id = newCategoryId;
+      }
+      ok++;
+    } catch (e) {
+      console.warn('bulkCategorize fail', tx.id, e);
+      fail++;
+    }
+  }
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  const catName = (STATE.categories.find(c => c.id === newCategoryId) || {}).name || '';
+  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' aplicado' + (ok === 1 ? '' : 's') + ' em "' + catName + '"' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '</span>';
+  btn.disabled = false;
+  btn.textContent = '💾 Aplicar a todos';
+  setTimeout(function() {
+    document.getElementById('bulkCategorizeBackdrop').classList.remove('active');
+  }, 1200);
 }
 
 // Helper compartilhado por bulkCategorize e bulkCategorizeSelected
@@ -3600,15 +3788,22 @@ async function _applyBulkSuggestions(txs, scopeLabel) {
 }
 
 // ═══════════════════════════════════════════════
-//  CRIAR NOVA CATEGORIA (via POST /api/proxy?endpoint=categories)
+//  CATEGORIAS — CRIAR / EDITAR / EXCLUIR
 // ═══════════════════════════════════════════════
-// Guarda qual dropdown deve ser atualizado após criar a categoria.
+// O modal é compartilhado entre criação e edição. Em modo "edit" guardamos
+// APP.__editingCategoryId; em "create" guardamos APP.__newCategoryTarget
+// (id do <select> que deve receber a categoria recém-criada).
 function openNewCategoryModal(targetSelectId) {
+  APP.__editingCategoryId = null;
   APP.__newCategoryTarget = targetSelectId || null;
+  document.getElementById('newCategoryTitle').textContent = '➕ Nova categoria';
+  document.getElementById('newCategoryHelp').textContent = 'A categoria será criada direto no Organizze e ficará disponível para todos os lançamentos.';
   document.getElementById('newCategoryName').value = '';
   document.getElementById('newCategoryKind').value = 'expense';
   document.getElementById('newCategoryColor').value = '#43A047';
   document.getElementById('newCategoryStatus').textContent = '';
+  document.getElementById('btnSaveNewCategory').textContent = '💾 Criar categoria';
+  document.getElementById('btnDeleteCategory').style.display = 'none';
   document.getElementById('newCategoryBackdrop').classList.add('active');
   setTimeout(function() {
     const el = document.getElementById('newCategoryName');
@@ -3616,18 +3811,43 @@ function openNewCategoryModal(targetSelectId) {
   }, 50);
 }
 
+function openEditCategoryModal(categoryId) {
+  const cat = (STATE.categories || []).find(c => c.id === categoryId);
+  if (!cat) {
+    alert('Categoria não encontrada.');
+    return;
+  }
+  APP.__editingCategoryId = categoryId;
+  APP.__newCategoryTarget = null;
+  document.getElementById('newCategoryTitle').textContent = '✏️ Editar categoria';
+  document.getElementById('newCategoryHelp').textContent = 'As alterações serão salvas direto no Organizze e refletem em todos os lançamentos.';
+  document.getElementById('newCategoryName').value = cat.name || '';
+  // kind é inferido pelo sinal das transações; mantemos como referência do formulário
+  document.getElementById('newCategoryKind').value = 'expense';
+  document.getElementById('newCategoryColor').value = cat.color || '#43A047';
+  document.getElementById('newCategoryStatus').textContent = '';
+  document.getElementById('btnSaveNewCategory').textContent = '💾 Salvar alterações';
+  document.getElementById('btnDeleteCategory').style.display = 'inline-block';
+  document.getElementById('newCategoryBackdrop').classList.add('active');
+  setTimeout(function() {
+    const el = document.getElementById('newCategoryName');
+    if (el) { el.focus(); el.select && el.select(); }
+  }, 50);
+}
+
 function closeNewCategoryModal(e) {
   if (e && e.target !== document.getElementById('newCategoryBackdrop')) return;
   document.getElementById('newCategoryBackdrop').classList.remove('active');
   APP.__newCategoryTarget = null;
+  APP.__editingCategoryId = null;
 }
 
 async function saveNewCategory() {
   const name = document.getElementById('newCategoryName').value.trim();
-  const kind = document.getElementById('newCategoryKind').value;
   const color = document.getElementById('newCategoryColor').value;
   const status = document.getElementById('newCategoryStatus');
   const btn = document.getElementById('btnSaveNewCategory');
+  const editingId = APP.__editingCategoryId || null;
 
   if (!name) {
     status.innerHTML = '<span style="color:var(--red);">Informe um nome.</span>';
@@ -3635,49 +3855,309 @@ async function saveNewCategory() {
   }
 
   btn.disabled = true;
-  btn.textContent = 'Criando...';
+  btn.textContent = editingId ? 'Salvando...' : 'Criando...';
   status.innerHTML = '<span style="color:var(--text-secondary);">Enviando ao Organizze...</span>';
 
   try {
-    // Organizze API: POST /categories com { name, color, kind? }
-    // kind não é um campo oficial; transações expense/income são diferenciadas
-    // pelo sinal do valor. Mas mandamos essa info pra referência futura.
     const payload = { name: name, color: color };
-    const created = await api('categories', { method: 'POST', body: payload });
-
-    if (!created || !created.id) {
-      status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
-      btn.disabled = false;
-      btn.textContent = '💾 Criar categoria';
-      return;
-    }
-
-    // Adiciona ao STATE e re-seleciona no dropdown alvo
-    STATE.categories.push(created);
-    if (APP.__newCategoryTarget) {
-      const sel = document.getElementById(APP.__newCategoryTarget);
-      if (sel) {
-        const opt = document.createElement('option');
-        opt.value = created.id;
-        opt.textContent = created.name;
-        sel.appendChild(opt);
-        sel.value = created.id;
+    let saved;
+    if (editingId) {
+      // PUT /categories/:id
+      saved = await api('categories/' + editingId, { method: 'PUT', body: payload });
+      // Atualiza STATE localmente mesmo que o retorno seja parcial
+      const local = STATE.categories.find(c => c.id === editingId);
+      if (local) {
+        local.name = (saved && saved.name) || name;
+        local.color = (saved && saved.color) || color;
+      }
+    } else {
+      // POST /categories
+      saved = await api('categories', { method: 'POST', body: payload });
+      if (!saved || !saved.id) {
+        status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
+        btn.disabled = false;
+        btn.textContent = '💾 Criar categoria';
+        return;
+      }
+      STATE.categories.push(saved);
+      if (APP.__newCategoryTarget) {
+        const sel = document.getElementById(APP.__newCategoryTarget);
+        if (sel) {
+          const opt = document.createElement('option');
+          opt.value = saved.id;
+          opt.textContent = saved.name;
+          sel.appendChild(opt);
+          sel.value = saved.id;
+        }
       }
     }
 
-    status.innerHTML = '<span style="color:var(--green-600);">✅ Categoria criada!</span>';
+    status.innerHTML = '<span style="color:var(--green-600);">✅ ' + (editingId ? 'Categoria atualizada!' : 'Categoria criada!') + '</span>';
+    // Se a página de gerenciamento está aberta, re-renderiza
+    if (STATE.currentPage === 'manage') renderManageCategories();
     setTimeout(function() {
       document.getElementById('newCategoryBackdrop').classList.remove('active');
       APP.__newCategoryTarget = null;
+      APP.__editingCategoryId = null;
       btn.disabled = false;
-      btn.textContent = '💾 Criar categoria';
+      btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar categoria';
     }, 700);
   } catch (e) {
     showError('saveNewCategory', e);
     status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
     btn.disabled = false;
-    btn.textContent = '💾 Criar categoria';
+    btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar categoria';
   }
+}
+
+async function deleteCategoryFromModal() {
+  const editingId = APP.__editingCategoryId;
+  if (!editingId) return;
+  const cat = (STATE.categories || []).find(c => c.id === editingId);
+  if (!cat) return;
+  const uses = (STATE.transactions || []).filter(t => t.category_id === editingId).length;
+  const confirmMsg = '🗑️ Excluir a categoria "' + (cat.name || '') + '"?'
+    + (uses ? '\n\n⚠️ ' + uses + ' lançamento(s) no período atual usam essa categoria e ficarão sem categoria no Organizze.' : '')
+    + '\n\nEsta ação não pode ser desfeita.';
+  if (!confirm(confirmMsg)) return;
+
+  const status = document.getElementById('newCategoryStatus');
+  const btn = document.getElementById('btnDeleteCategory');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Removendo do Organizze...</span>';
+
+  try {
+    await api('categories/' + editingId, { method: 'DELETE' });
+    STATE.categories = (STATE.categories || []).filter(c => c.id !== editingId);
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Categoria excluída.</span>';
+    if (STATE.currentPage === 'manage') renderManageCategories();
+    setTimeout(function() {
+      document.getElementById('newCategoryBackdrop').classList.remove('active');
+      APP.__editingCategoryId = null;
+      btn.disabled = false;
+      btn.textContent = '🗑️ Excluir';
+    }, 700);
+  } catch (e) {
+    showError('deleteCategory', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro ao excluir') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Excluir';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CONTAS — CRIAR / EDITAR / EXCLUIR
+// ═══════════════════════════════════════════════
+function openAccountModal(accountId) {
+  const isEdit = !!accountId;
+  const acc = isEdit ? (STATE.accounts || []).find(a => a.id === accountId) : null;
+  if (isEdit && !acc) {
+    alert('Conta não encontrada.');
+    return;
+  }
+  APP.__editingAccountId = isEdit ? accountId : null;
+  document.getElementById('accountModalTitle').textContent = isEdit ? '✏️ Editar conta' : '➕ Nova conta';
+  document.getElementById('accountName').value = (acc && acc.name) || '';
+  document.getElementById('accountType').value = (acc && acc.type) || 'checking';
+  document.getElementById('accountDescription').value = (acc && acc.description) || '';
+  document.getElementById('accountStatus').textContent = '';
+  document.getElementById('btnSaveAccount').textContent = isEdit ? '💾 Salvar alterações' : '💾 Criar conta';
+  document.getElementById('btnDeleteAccount').style.display = isEdit ? 'inline-block' : 'none';
+  document.getElementById('accountBackdrop').classList.add('active');
+  setTimeout(function() {
+    const el = document.getElementById('accountName');
+    if (el) { el.focus(); el.select && el.select(); }
+  }, 50);
+}
+
+function closeAccountModal(e) {
+  if (e && e.target !== document.getElementById('accountBackdrop')) return;
+  document.getElementById('accountBackdrop').classList.remove('active');
+  APP.__editingAccountId = null;
+}
+
+async function saveAccount() {
+  const name = document.getElementById('accountName').value.trim();
+  const type = document.getElementById('accountType').value;
+  const description = document.getElementById('accountDescription').value.trim();
+  const status = document.getElementById('accountStatus');
+  const btn = document.getElementById('btnSaveAccount');
+  const editingId = APP.__editingAccountId || null;
+
+  if (!name) {
+    status.innerHTML = '<span style="color:var(--red);">Informe um nome.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = editingId ? 'Salvando...' : 'Criando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Enviando ao Organizze...</span>';
+
+  try {
+    const payload = { name: name, type: type, description: description };
+    let saved;
+    if (editingId) {
+      saved = await api('accounts/' + editingId, { method: 'PUT', body: payload });
+      const local = (STATE.accounts || []).find(a => a.id === editingId);
+      if (local) {
+        local.name = (saved && saved.name) || name;
+        local.type = (saved && saved.type) || type;
+        local.description = (saved && saved.description) || description;
+      }
+    } else {
+      saved = await api('accounts', { method: 'POST', body: payload });
+      if (!saved || !saved.id) {
+        status.innerHTML = '<span style="color:var(--red);">Resposta inesperada do Organizze.</span>';
+        btn.disabled = false;
+        btn.textContent = '💾 Criar conta';
+        return;
+      }
+      STATE.accounts = (STATE.accounts || []).concat(saved);
+    }
+    status.innerHTML = '<span style="color:var(--green-600);">✅ ' + (editingId ? 'Conta atualizada!' : 'Conta criada!') + '</span>';
+    if (STATE.currentPage === 'manage') renderManageAccounts();
+    setTimeout(function() {
+      document.getElementById('accountBackdrop').classList.remove('active');
+      APP.__editingAccountId = null;
+      btn.disabled = false;
+      btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar conta';
+    }, 700);
+  } catch (e) {
+    showError('saveAccount', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+    btn.disabled = false;
+    btn.textContent = editingId ? '💾 Salvar alterações' : '💾 Criar conta';
+  }
+}
+
+async function deleteAccountFromModal() {
+  const editingId = APP.__editingAccountId;
+  if (!editingId) return;
+  const acc = (STATE.accounts || []).find(a => a.id === editingId);
+  if (!acc) return;
+  const uses = (STATE.transactions || []).filter(t => t.account_id === editingId).length;
+  const confirmMsg = '🗑️ Excluir a conta "' + (acc.name || '') + '"?'
+    + (uses ? '\n\n⚠️ ' + uses + ' lançamento(s) no período atual estão vinculados a essa conta.' : '')
+    + '\n\nEsta ação não pode ser desfeita.';
+  if (!confirm(confirmMsg)) return;
+
+  const status = document.getElementById('accountStatus');
+  const btn = document.getElementById('btnDeleteAccount');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Removendo do Organizze...</span>';
+
+  try {
+    await api('accounts/' + editingId, { method: 'DELETE' });
+    STATE.accounts = (STATE.accounts || []).filter(a => a.id !== editingId);
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Conta excluída.</span>';
+    if (STATE.currentPage === 'manage') renderManageAccounts();
+    setTimeout(function() {
+      document.getElementById('accountBackdrop').classList.remove('active');
+      APP.__editingAccountId = null;
+      btn.disabled = false;
+      btn.textContent = '🗑️ Excluir';
+    }, 700);
+  } catch (e) {
+    showError('deleteAccount', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro ao excluir') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '🗑️ Excluir';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PÁGINA GERENCIAR (Categorias / Contas)
+// ═══════════════════════════════════════════════
+function renderManage() {
+  const tab = STATE.manageTab || 'categories';
+  switchManageTab(tab);
+}
+
+function switchManageTab(tab) {
+  STATE.manageTab = tab;
+  const catTab = document.getElementById('manageTabCategories');
+  const accTab = document.getElementById('manageTabAccounts');
+  if (catTab) catTab.style.display = tab === 'categories' ? '' : 'none';
+  if (accTab) accTab.style.display = tab === 'accounts' ? '' : 'none';
+  // Alterna estilo dos botões de tab
+  document.querySelectorAll('#manageTabBtns button[data-manage-tab]').forEach(function(b) {
+    const active = b.getAttribute('data-manage-tab') === tab;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-secondary', !active);
+  });
+  if (tab === 'categories') renderManageCategories();
+  else renderManageAccounts();
+}
+
+function renderManageCategories() {
+  const body = document.getElementById('manageCategoriesBody');
+  const status = document.getElementById('manageCategoriesStatus');
+  if (!body) return;
+  const cats = getSortedRootCategories();
+  if (status) {
+    status.textContent = cats.length
+      ? cats.length + ' categoria' + (cats.length === 1 ? '' : 's') + ' cadastrada' + (cats.length === 1 ? '' : 's') + '.'
+      : 'Nenhuma categoria cadastrada ainda. Clique em "Nova categoria" para criar a primeira.';
+  }
+  if (!cats.length) {
+    body.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="emoji">🏷️</div><div>Nenhuma categoria</div></div></td></tr>';
+    return;
+  }
+  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const txs = STATE.transactions || [];
+  body.innerHTML = cats.map(c => {
+    const color = (c.color && /^#[0-9a-fA-F]{6}$/.test(c.color)) ? c.color : '#9E9E9E';
+    const uses = txs.filter(t => t.category_id === c.id).length;
+    return '<tr>'
+      + '<td><span style="display:inline-block;width:22px;height:22px;border-radius:6px;background:' + color + ';border:1px solid var(--border);"></span></td>'
+      + '<td style="font-weight:600;">' + escHtml(c.name) + '</td>'
+      + '<td style="text-align:right;color:var(--text-secondary);">' + uses + '</td>'
+      + '<td style="text-align:right;">'
+      +   '<button class="btn btn-sm btn-secondary" onclick="openEditCategoryModal(' + c.id + ')" title="Editar">✏️ Editar</button> '
+      +   '<button class="btn btn-sm btn-secondary" onclick="openEditCategoryModalAndDelete(' + c.id + ')" title="Excluir" style="color:var(--red);border-color:var(--red);">🗑️</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
+}
+
+// Atalho usado pelo botão de excluir da lista: abre o modal e dispara a confirmação
+function openEditCategoryModalAndDelete(categoryId) {
+  openEditCategoryModal(categoryId);
+  // Pequeno delay para garantir que o modal está aberto antes do confirm()
+  setTimeout(function() { deleteCategoryFromModal(); }, 50);
+}
+
+function renderManageAccounts() {
+  const body = document.getElementById('manageAccountsBody');
+  const status = document.getElementById('manageAccountsStatus');
+  if (!body) return;
+  const accs = sortByName(STATE.accounts || []);
+  if (status) {
+    status.textContent = accs.length
+      ? accs.length + ' conta' + (accs.length === 1 ? '' : 's') + ' cadastrada' + (accs.length === 1 ? '' : 's') + '.'
+      : 'Nenhuma conta cadastrada ainda.';
+  }
+  if (!accs.length) {
+    body.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="emoji">🏦</div><div>Nenhuma conta</div></div></td></tr>';
+    return;
+  }
+  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const txs = STATE.transactions || [];
+  const typeLabels = { checking: 'Corrente', savings: 'Poupança', investment: 'Investimento', cash: 'Dinheiro', other_kind: 'Outros' };
+  body.innerHTML = accs.map(a => {
+    const uses = txs.filter(t => t.account_id === a.id).length;
+    const type = typeLabels[a.type] || a.type || '—';
+    return '<tr>'
+      + '<td style="font-weight:600;">🏦 ' + escHtml(a.name) + (a.description ? '<br><span style="font-size:12px;color:var(--text-muted);">' + escHtml(a.description) + '</span>' : '') + '</td>'
+      + '<td style="color:var(--text-secondary);">' + escHtml(type) + '</td>'
+      + '<td style="text-align:right;color:var(--text-secondary);">' + uses + '</td>'
+      + '<td style="text-align:right;">'
+      +   '<button class="btn btn-sm btn-secondary" onclick="openAccountModal(' + a.id + ')" title="Editar">✏️ Editar</button>'
+      + '</td>'
+      + '</tr>';
+  }).join('');
 }
 
 // ═══════════════════════════════════════════════
@@ -3686,11 +4166,10 @@ async function saveNewCategory() {
 function openModal(type) {
   document.getElementById('txDate').value = today();
   const catSel = document.getElementById('txCategory');
-  catSel.innerHTML = STATE.categories
-    .filter(c => !c.parent_id || c.parent_id === null)
+  catSel.innerHTML = getSortedRootCategories()
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const accSel = document.getElementById('txAccount');
-  accSel.innerHTML = STATE.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  accSel.innerHTML = sortByName(STATE.accounts).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
   document.getElementById('modalBackdrop').classList.add('active');
 }
 
