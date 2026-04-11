@@ -4304,11 +4304,10 @@ async function saveEditTransaction() {
   btn.disabled = true;
   btn.textContent = 'Salvando...';
   try {
-    // Aplica a mudança local do checkbox imediatamente (sem API — é
-    // uma marcação local por dispositivo).
-    if (excludedChanged) setTxManuallyExcluded(tx.id, newExcluded);
-
-    // Só chama a API do Organizze se categoria ou notas mudaram.
+    // IMPORTANTE: a mudança local do checkbox só é persistida DEPOIS do
+    // PUT confirmar — se o PUT falhar e já tivéssemos gravado em
+    // localStorage, o usuário veria "Erro ao salvar" mas os totais já
+    // teriam mudado, criando um estado parcial difícil de reverter.
     if (categoryChanged || notesChanged) {
       const payload = {};
       if (categoryChanged) payload.category_id = newCategoryId;
@@ -4325,6 +4324,9 @@ async function saveEditTransaction() {
         }
       }
     }
+    // Grava a exclusão manual só agora — se havia PUT e falhou, já
+    // teríamos saído pelo catch antes de chegar aqui.
+    if (excludedChanged) setTxManuallyExcluded(tx.id, newExcluded);
     closeEditModal();
     // Re-renderiza as telas afetadas para refletir a nova exclusão
     populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
