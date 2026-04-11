@@ -826,6 +826,7 @@ tr:hover td { background: var(--bg-card-alt); }
         <div class="card-header">
           <span class="card-title">🔍 Filtros</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="bulkCategorize()" title="Sugere categoria para todos os lançamentos filtrados usando IA local">🤖 Categorizar tudo</button>
             <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Exportar como PDF">📄 PDF</button>
             <button class="btn btn-secondary btn-sm" onclick="exportPrint()" title="Imprimir">🖨️ Imprimir</button>
             <button class="btn btn-secondary btn-sm" onclick="exportWhatsApp()" title="Enviar via WhatsApp">💬 WhatsApp</button>
@@ -982,7 +983,7 @@ tr:hover td { background: var(--bg-card-alt); }
   </main>
 </div>
 
-<!-- ═══════════ MODAL ═══════════ -->
+<!-- ═══════════ MODAL (novo lançamento) ═══════════ -->
 <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <h3 id="modalTitle">➕ Novo Lançamento</h3>
@@ -1011,6 +1012,44 @@ tr:hover td { background: var(--bg-card-alt); }
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveTx" onclick="saveTransaction()">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL (editar lançamento) ═══════════ -->
+<div class="modal-backdrop" id="editTxBackdrop" onclick="closeEditModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>✏️ Editar Lançamento</h3>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Descrição</label>
+        <div id="editTxDesc" style="padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text);min-height:42px;word-break:break-word;"></div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Data</label>
+        <div id="editTxDate" style="padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:14px;color:var(--text-secondary);"></div>
+      </div>
+      <div class="form-col">
+        <label>Valor</label>
+        <div id="editTxAmount" style="padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:'Space Mono',monospace;font-weight:600;"></div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Categoria</label>
+        <select id="editTxCategory"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="suggestCategoryLocal()" title="Sugere categoria com base em palavras-chave (instantâneo)">🤖 Sugerir</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="suggestCategoryAI()" title="Usa IA (OpenAI) para categorizar (requer configuração)">✨ IA</button>
+      <span id="editTxSuggestStatus" style="font-size:12px;color:var(--text-secondary);"></span>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveEditTx" onclick="saveEditTransaction()">💾 Salvar</button>
     </div>
   </div>
 </div>
@@ -1909,7 +1948,7 @@ function populateTxTable(txs) {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
       const mem = guessMember(t.description);
-      return `<tr>
+      return `<tr style="cursor:pointer;" onclick="openEditTx(${t.id})" title="Clique para editar">
         <td>${fmtDate(t.date)}</td>
         <td>${t.description || '—'}</td>
         <td>${cat}</td>
@@ -2165,6 +2204,322 @@ function exportWhatsApp() {
     showError('exportWhatsApp', e);
     alert('Erro ao preparar WhatsApp: ' + (e.message || 'desconhecido'));
   }
+}
+
+// ═══════════════════════════════════════════════
+//  CATEGORIZAÇÃO AUTOMÁTICA (heurística local)
+// ═══════════════════════════════════════════════
+// Mapeamento de padrões comuns brasileiros → palavras-chave de categoria.
+// Cada padrão tem uma lista de "hints" que são procurados nos nomes das
+// categorias do Organizze (tolerante a variações: alimentação/alimentacao,
+// saúde/saude, etc).
+//
+// REGRA: palavras curtas (ex: 'ale', 'bar', 'tim', 'oi') PRECISAM de \b no
+// final para não casarem dentro de outras palavras (ex: 'ale' em 'aleatorio',
+// 'bar' em 'barragem'). Prefixos/raízes (ex: 'farmac', 'gasolin', 'supermerc')
+// NÃO devem ter \b no final pois precisam casar com sufixos.
+const CATEGORY_HINTS = [
+  // ─── ALIMENTAÇÃO ───
+  { re: /\b(?:super\s*mercado|supermerc|mercado\b|padari|hortifruti|acoug|feira\b|emporio\b|atacad)/i,
+    hints: ['alimenta', 'supermerc', 'mercado', 'casa', 'aliment'] },
+  { re: /\b(?:ifood\b|rappi\b|uber\s*eats|loggi\b|jamesdelivery\b|delivery\b)/i,
+    hints: ['deliver', 'refei', 'aliment', 'comida', 'restaur'] },
+  { re: /\b(?:restaur|bistro\b|cafeteria|lanchon|pizzari|burger\b|mcdonald|subway\b|outback\b|ragazzo\b|madero\b|giraffas\b|casa\s*das\s*empada)/i,
+    hints: ['restaur', 'refei', 'aliment', 'lazer'] },
+
+  // ─── TRANSPORTE / COMBUSTÍVEL ───
+  { re: /\b(?:uber\b|99\s*(?:pop|taxi)?\b|taxi\b|cabify\b|blablacar\b)/i,
+    hints: ['transpor', 'uber', 'taxi', 'mobil'] },
+  { re: /\b(?:posto\b|ipiranga\b|petrobras\b|shell\b|ale\b|br\s*mania\b|raiz[ae]n\b|gasolin|etanol\b|diesel\b|combust)/i,
+    hints: ['combust', 'posto', 'transpor', 'gasolin'] },
+  { re: /\b(?:estacion|zona\s*azul|rotativ|autovia\b|pedag|ccr\b|arteris\b|tebe\b)/i,
+    hints: ['transpor', 'estacion', 'pedag'] },
+
+  // ─── SAÚDE ───
+  { re: /\b(?:farmac|drogaria\b|droga\s*raia|drogasil\b|pacheco\b|pague\s*menos|panvel\b|nissei\b|sao\s*joao\b|clamed\b|rosario\b)/i,
+    hints: ['saude', 'farmac', 'medic', 'remed'] },
+  { re: /\b(?:hospital\b|clinica\b|laborator|exame\b|consulta\b|dentist|odont|psicolo|fisiot|unimed\b|hapvida\b|amil\b|bradesco\s*saude|sul\s*america)/i,
+    hints: ['saude', 'medic', 'plan'] },
+
+  // ─── MORADIA ───
+  { re: /\b(?:aluguel\b|locacao\b|condomin|imobiliari)/i,
+    hints: ['moradi', 'aluguel', 'condom', 'casa'] },
+  { re: /\b(?:luz\b|energia\b|celpe\b|cemig\b|celesc\b|ceee\b|copel\b|coelba\b|enel\b|equatorial\b|neoenergia\b|light\b|eletrobras\b)/i,
+    hints: ['energ', 'luz', 'eletric', 'conta', 'moradi'] },
+  { re: /\b(?:agua\b|saneamento\b|sabesp\b|embasa\b|corsan\b|casan\b|cedae\b|sanepar\b|caesb\b|compesa\b|cesan\b)/i,
+    hints: ['agua', 'sane', 'moradi', 'conta'] },
+  { re: /\b(?:gas\s*natural|comgas\b|ultragaz\b|liquigas\b)/i,
+    hints: ['gas', 'moradi', 'conta'] },
+  { re: /\b(?:iptu\b|ipva\b)/i,
+    hints: ['imposto', 'tribut', 'moradi'] },
+
+  // ─── TELECOM / INTERNET ───
+  { re: /\b(?:internet\b|vivo\b|claro\b|tim\b|oi\b|nextel\b|net\s*service|algar\b|sercomtel\b|brisanet\b|desktop\b)/i,
+    hints: ['telecom', 'internet', 'celular', 'telefone', 'conta'] },
+
+  // ─── EDUCAÇÃO ───
+  { re: /\b(?:escola\b|colegio\b|marista\b|universid|faculdad|curso\b|mensalid\s*escolar|ensino\b|creche\b|pre[- ]escol)/i,
+    hints: ['educa', 'escola', 'ensino', 'curso'] },
+
+  // ─── LAZER / ENTRETENIMENTO ───
+  { re: /\b(?:netflix\b|spotify\b|deezer\b|disney|globoplay\b|prime\s*video|hbo\b|max\b|paramount\b|apple\s*music|youtube\b)/i,
+    hints: ['strea', 'entret', 'lazer', 'assin'] },
+  { re: /\b(?:cinema\b|teatro\b|show\b|ingresso\b|sympla\b|ticketmaster\b|livepass\b)/i,
+    hints: ['lazer', 'entret', 'cinema'] },
+  { re: /\b(?:hotel\b|pousad|airbnb\b|booking\b|decolar\b|cvc\b|123milhas\b|latam\b|gol\s*linhas|azul\s*linhas|viagem\b)/i,
+    hints: ['viagem', 'lazer', 'hotel'] },
+  { re: /\b(?:steam\b|epic\s*games|nintendo\b|xbox\b|playstation\b|psn\b|riot\b|blizzard\b)/i,
+    hints: ['lazer', 'jogo', 'entret'] },
+
+  // ─── COMPRAS ───
+  { re: /\b(?:amazon\b|mercado\s*livre|shopee\b|aliexpress\b|magazine\b|magalu\b|americanas\b|submarino\b|casas\s*bahia|ponto\s*frio|extra\b|kabum\b|pichau\b|fastshop\b)/i,
+    hints: ['compr', 'onlin', 'eletron'] },
+  { re: /\b(?:renner\b|riachuelo\b|c&a\b|marisa\b|zara\b|hering\b|nike\b|adidas\b|arezzo\b|dafiti\b|netshoes\b)/i,
+    hints: ['vestua', 'roupa', 'compr', 'lazer'] },
+
+  // ─── BANCÁRIO / TARIFAS ───
+  { re: /\b(?:tarifa\b|anuidade\b|iof\b|juros\b|multa\b|estorno\b|taxa\s*(?:bancari|mensalidad))/i,
+    hints: ['tarif', 'banc', 'servic', 'despes'] },
+  { re: /\b(?:banco\s*do\s*brasil|bradesco\b|itau\b|santander\b|caixa\s*eco|nubank\b|inter\b|c6\b)/i,
+    hints: ['banc', 'tarif', 'servic'] },
+
+  // ─── RECEITAS ───
+  { re: /\b(?:salario\b|salário\b|proventos\b|ordenad|folha\b|pagamento\s*(?:cremers|consultor|clinica|hospital|plant))/i,
+    hints: ['salari', 'renda', 'receit', 'trabal'] },
+  { re: /\b(?:rendiment|dividend|juros\s*sobre|aplicac|cdb\b|tesouro\b|investiment)/i,
+    hints: ['invest', 'rendiment', 'receit'] },
+];
+
+// Ignora palavras curtas e conectores ao comparar com nome da categoria
+const CATEGORY_STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'com', 'sem', 'para', 'o', 'a', 'os', 'as', 'e']);
+
+function normalize(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove acentos
+    .toLowerCase();
+}
+
+function findCategoryByHint(categories, hint) {
+  const hn = normalize(hint);
+  return categories.find(c => normalize(c.name).includes(hn));
+}
+
+function suggestCategoryId(description, categories) {
+  if (!description || !categories || !categories.length) return null;
+  const normDesc = normalize(description);
+
+  // 1) Tenta padrões conhecidos (mais específico → retorna primeiro match)
+  for (const { re, hints } of CATEGORY_HINTS) {
+    if (re.test(normDesc)) {
+      for (const hint of hints) {
+        const cat = findCategoryByHint(categories, hint);
+        if (cat) return cat.id;
+      }
+    }
+  }
+
+  // 2) Fallback: procura nomes das categorias dentro da descrição
+  // (útil se o usuário tem categorias como "Uber", "iFood", etc)
+  for (const cat of categories) {
+    const nName = normalize(cat.name);
+    const tokens = nName.split(/[^a-z0-9]+/).filter(t => t.length > 3 && !CATEGORY_STOPWORDS.has(t));
+    for (const token of tokens) {
+      if (normDesc.includes(token)) return cat.id;
+    }
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════
+//  EDIT TRANSACTION MODAL
+// ═══════════════════════════════════════════════
+function openEditTx(txId) {
+  const tx = STATE.transactions.find(t => t.id === txId);
+  if (!tx) { showError('openEditTx', new Error('Transação ' + txId + ' não encontrada')); return; }
+  APP.__editingTx = tx;
+
+  const val = tx.amount_cents || Math.round((tx.amount || 0) * 100);
+  document.getElementById('editTxDesc').textContent = tx.description || '—';
+  document.getElementById('editTxDate').textContent = fmtDate(tx.date);
+  const amountEl = document.getElementById('editTxAmount');
+  amountEl.textContent = centsToReal(val);
+  amountEl.style.color = val >= 0 ? 'var(--green-600)' : 'var(--red)';
+
+  const catSel = document.getElementById('editTxCategory');
+  catSel.innerHTML = STATE.categories
+    .filter(c => !c.parent_id || c.parent_id === null)
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  // Inclui a categoria atual mesmo que seja filha (para não perder referência)
+  if (tx.category_id && !STATE.categories.some(c => c.id === tx.category_id && (!c.parent_id || c.parent_id === null))) {
+    const cat = STATE.categories.find(c => c.id === tx.category_id);
+    if (cat) {
+      const opt = document.createElement('option');
+      opt.value = cat.id;
+      opt.textContent = cat.name + ' (subcategoria)';
+      catSel.appendChild(opt);
+    }
+  }
+  catSel.value = tx.category_id || '';
+
+  document.getElementById('editTxSuggestStatus').textContent = '';
+  document.getElementById('editTxBackdrop').classList.add('active');
+}
+
+function closeEditModal(e) {
+  if (e && e.target !== document.getElementById('editTxBackdrop')) return;
+  document.getElementById('editTxBackdrop').classList.remove('active');
+  APP.__editingTx = null;
+}
+
+// Sugestão via regras locais (instantâneo, sem API)
+function suggestCategoryLocal() {
+  const tx = APP.__editingTx;
+  const status = document.getElementById('editTxSuggestStatus');
+  if (!tx) return;
+  const id = suggestCategoryId(tx.description, STATE.categories);
+  if (id) {
+    document.getElementById('editTxCategory').value = id;
+    const cat = STATE.categories.find(c => c.id === id);
+    status.innerHTML = '<span style="color:var(--green-600);">🤖 Sugerido: ' + (cat ? cat.name : id) + '</span>';
+  } else {
+    status.innerHTML = '<span style="color:var(--orange);">⚠️ Nenhuma regra casou — escolha manualmente.</span>';
+  }
+}
+
+// Sugestão via IA (OpenAI via Supabase Edge Function)
+async function suggestCategoryAI() {
+  const tx = APP.__editingTx;
+  const status = document.getElementById('editTxSuggestStatus');
+  if (!tx) return;
+  if (!SB || !SB.functions) {
+    status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não disponível.</span>';
+    return;
+  }
+  status.innerHTML = '<span style="color:var(--text-secondary);">✨ Consultando IA...</span>';
+  try {
+    const val = tx.amount_cents || Math.round((tx.amount || 0) * 100);
+    const { data, error } = await SB.functions.invoke('categorize-transaction', {
+      body: {
+        description: tx.description || '',
+        amount_cents: val,
+        categories: STATE.categories
+          .filter(c => !c.parent_id || c.parent_id === null)
+          .map(c => ({ id: c.id, name: c.name }))
+      }
+    });
+    if (error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + (error.message || 'Falha IA') + '</span>';
+      return;
+    }
+    if (data && data.error) {
+      status.innerHTML = '<span style="color:var(--orange);">⚠️ ' + data.error + '</span>';
+      return;
+    }
+    if (data && data.categoryId) {
+      document.getElementById('editTxCategory').value = data.categoryId;
+      const cat = STATE.categories.find(c => c.id === data.categoryId);
+      status.innerHTML = '<span style="color:var(--green-600);">✨ IA sugeriu: ' + (cat ? cat.name : data.categoryId) + '</span>';
+    } else {
+      status.innerHTML = '<span style="color:var(--orange);">⚠️ IA não retornou categoria válida.</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  }
+}
+
+async function saveEditTransaction() {
+  const tx = APP.__editingTx;
+  if (!tx) return;
+  const btn = document.getElementById('btnSaveEditTx');
+  const newCategoryId = parseInt(document.getElementById('editTxCategory').value, 10);
+  if (isNaN(newCategoryId)) {
+    alert('Selecione uma categoria válida.');
+    return;
+  }
+  if (newCategoryId === tx.category_id) {
+    closeEditModal();
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  try {
+    await api('transactions/' + tx.id, {
+      method: 'PUT',
+      body: { category_id: newCategoryId }
+    });
+    // Atualiza o STATE local (sem refetch)
+    tx.category_id = newCategoryId;
+    // Atualiza o cache filtrado se a transação estiver lá
+    if (Array.isArray(STATE.txLastFiltered)) {
+      const found = STATE.txLastFiltered.find(t => t.id === tx.id);
+      if (found) found.category_id = newCategoryId;
+    }
+    closeEditModal();
+    populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  } catch (e) {
+    showError('saveEditTransaction', e);
+    alert('Erro ao salvar: ' + (e.message || 'desconhecido'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CATEGORIZAÇÃO EM MASSA
+// ═══════════════════════════════════════════════
+async function bulkCategorize() {
+  const txs = txsForExport();
+  if (!txs.length) {
+    alert('Nenhum lançamento visível para categorizar.');
+    return;
+  }
+
+  // Pré-calcula sugestões com a heurística local
+  const suggestions = [];
+  txs.forEach(t => {
+    const suggestedId = suggestCategoryId(t.description, STATE.categories);
+    if (suggestedId && suggestedId !== t.category_id) {
+      const oldCat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
+      const newCat = (STATE.categories.find(c => c.id === suggestedId) || {}).name || '—';
+      suggestions.push({ tx: t, oldCat, newCat, newId: suggestedId });
+    }
+  });
+
+  if (!suggestions.length) {
+    alert('🤖 Nenhuma sugestão nova encontrada para os lançamentos filtrados.');
+    return;
+  }
+
+  const msg = '🤖 ' + suggestions.length + ' lançamentos podem ser recategorizados:\n\n'
+    + suggestions.slice(0, 10).map(s =>
+        '• "' + (s.tx.description || '').substring(0, 35) + '"\n    ' + s.oldCat + ' → ' + s.newCat
+      ).join('\n')
+    + (suggestions.length > 10 ? '\n... e mais ' + (suggestions.length - 10) : '')
+    + '\n\nAplicar todas as sugestões?';
+  if (!confirm(msg)) return;
+
+  let ok = 0, fail = 0;
+  for (const s of suggestions) {
+    try {
+      await api('transactions/' + s.tx.id, {
+        method: 'PUT',
+        body: { category_id: s.newId }
+      });
+      s.tx.category_id = s.newId;
+      if (Array.isArray(STATE.txLastFiltered)) {
+        const found = STATE.txLastFiltered.find(t => t.id === s.tx.id);
+        if (found) found.category_id = s.newId;
+      }
+      ok++;
+    } catch (e) {
+      console.warn('bulkCategorize fail', s.tx.id, e);
+      fail++;
+    }
+  }
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  alert('✅ ' + ok + ' categorizados' + (fail ? ' · ❌ ' + fail + ' falhas' : '') + '.');
 }
 
 // ═══════════════════════════════════════════════
