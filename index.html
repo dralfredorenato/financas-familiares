@@ -944,10 +944,52 @@ function memberTagHTML(m) {
   return `<span class="tag ${cls[m] || cls.familia}">${memberLabel(m)}</span>`;
 }
 
-// ═══════════════════════════════════════════════
-//  API — MULTI-PROXY WITH FALLBACK
-// ═══════════════════════════════════════════════
+// ═════════════════════════════════════════════════
+//  API
+// ═════════════════════════════════════════════════
 
+async function api(endpoint, options) {
+  if (!options) options = {};
+  var url = '/api/proxy?endpoint=' + encodeURIComponent(endpoint);
+  var opts = { method: options.method || 'GET', headers: { 'Content-Type': 'application/json', 'X-Organizze-Email': APP.email, 'X-Organizze-Token': APP.token } };
+  if (options.body) opts.body = JSON.stringify(options.body);
+  var r = await fetch(url, opts);
+  if (!r.ok) throw new Error('API erro: ' + r.status);
+  return r.json();
+}
+
+function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
+
+async function doLogin() {
+  var email = document.getElementById('loginEmail').value.trim();
+  var token = document.getElementById('loginToken').value.trim();
+  if (!email || !token) { setLoginStatus('Preencha e-mail e token.'); return; }
+  setLoginStatus('Conectando...');
+  APP.email = email; APP.token = token;
+  try {
+    var accounts = await api('accounts');
+    if (!Array.isArray(accounts)) throw new Error('Resposta inválida');
+    APP.accounts = accounts;
+    localStorage.setItem('org_email', email); localStorage.setItem('org_token', token);
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = '';
+    renderPage('dashboard');
+  } catch (e) { console.error('[AUTH] Falha:', e); setLoginStatus('Falha na autenticação. Verifique e-mail e token.'); }
+}
+
+function doLogout() {
+  APP.email = ''; APP.token = ''; APP.accounts = [];
+  localStorage.removeItem('org_email'); localStorage.removeItem('org_token');
+  document.getElementById('loginScreen').style.display = '';
+  document.getElementById('appScreen').style.display = 'none';
+}
+
+function checkSavedLogin() {
+  var e = localStorage.getItem('org_email'), t = localStorage.getItem('org_token');
+  if (e && t) { document.getElementById('loginEmail').value = e; document.getElementById('loginToken').value = t; }
+}
+
+async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
 
 // ═══════════════════════════════════════════════
 //  NAVIGATION
