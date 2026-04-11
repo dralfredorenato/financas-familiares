@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Família Metzger - Gestão Financeira</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -66,6 +67,36 @@ body {
   color: var(--text);
   min-height: 100vh;
   transition: background var(--transition), color var(--transition);
+}
+
+/* ─── GLOBAL ERROR BANNER ─── */
+#__errBanner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 99999;
+  background: #C62828;
+  color: #fff;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 10px 40px 10px 14px;
+  max-height: 40vh;
+  overflow: auto;
+  display: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+#__errBanner.show { display: block; }
+#__errBanner .close {
+  position: absolute;
+  top: 6px; right: 10px;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 /* ─── SCROLLBAR ─── */
@@ -667,24 +698,64 @@ tr:hover td { background: var(--bg-card-alt); }
 </head>
 <body>
 
+<!-- ═══════════ ERROR BANNER ═══════════ -->
+<div id="__errBanner"><button class="close" onclick="document.getElementById('__errBanner').classList.remove('show')">×</button><span id="__errBannerText"></span></div>
+
 <!-- ═══════════ LOGIN ═══════════ -->
 <div class="login-screen" id="loginScreen">
-  <div class="login-box">
+  <!-- Box principal de login -->
+  <div class="login-box" id="loginBoxMain">
     <div class="emoji-logo">🌿</div>
     <h1>Família Metzger</h1>
     <p class="subtitle">Gestão Financeira · Organizze</p>
     <div class="login-error" id="loginError"></div>
     <div class="form-group">
-      <label>📧 E-mail do Organizze</label>
-      <input type="email" id="loginEmail" placeholder="seu@email.com" />
+      <label>📧 E-mail</label>
+      <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="username" />
     </div>
     <div class="form-group">
-      <label>🔑 Token da API</label>
-      <input type="password" id="loginToken" placeholder="Cole seu token aqui" />
+      <label>🔒 Senha</label>
+      <input type="password" id="loginPassword" placeholder="Sua senha" autocomplete="current-password" />
     </div>
-    
-    <div id="loginStatus" style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:12px;min-height:18px;"></div>
+
+    <div id="loginStatus" style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:12px;min-height:18px;"></div>
     <button class="btn-login" id="btnLogin" onclick="doLogin()">Entrar</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" onclick="showForgotPassword();return false;" style="color:rgba(255,255,255,0.85);font-size:13px;text-decoration:none;border-bottom:1px dashed rgba(255,255,255,0.4);">🔑 Esqueci minha senha</a>
+    </div>
+  </div>
+
+  <!-- Box de "esqueci senha" -->
+  <div class="login-box" id="loginBoxForgot" style="display:none;">
+    <div class="emoji-logo">🔑</div>
+    <h1>Recuperar senha</h1>
+    <p class="subtitle">Digite seu e-mail para receber um link</p>
+    <div class="form-group">
+      <label>📧 E-mail</label>
+      <input type="email" id="forgotEmail" placeholder="seu@email.com" autocomplete="email" />
+    </div>
+    <div id="forgotStatus" style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:12px;min-height:36px;"></div>
+    <button class="btn-login" id="btnForgot" onclick="submitForgotPassword()">📨 Enviar link</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" onclick="hideForgotPassword();return false;" style="color:rgba(255,255,255,0.85);font-size:13px;text-decoration:none;">← Voltar ao login</a>
+    </div>
+  </div>
+
+  <!-- Box de reset (quando URL tem ?reset=TOKEN) -->
+  <div class="login-box" id="loginBoxReset" style="display:none;">
+    <div class="emoji-logo">🔒</div>
+    <h1>Nova senha</h1>
+    <p class="subtitle">Defina uma nova senha para sua conta</p>
+    <div class="form-group">
+      <label>🔒 Nova senha (mín. 6 caracteres)</label>
+      <input type="password" id="resetNewPass" autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label>🔒 Confirmar nova senha</label>
+      <input type="password" id="resetConfirmPass" autocomplete="new-password" />
+    </div>
+    <div id="resetStatus" style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:12px;min-height:36px;"></div>
+    <button class="btn-login" id="btnReset" onclick="submitResetPassword()">Redefinir senha</button>
   </div>
 </div>
 
@@ -704,6 +775,7 @@ tr:hover td { background: var(--bg-card-alt); }
     <div class="nav-item" data-page="cards"><span class="emoji">💎</span> Cartões</div>
     <div class="nav-item" data-page="family"><span class="emoji">👨‍👩‍👧</span> Família</div>
     <div class="nav-item" data-page="reports"><span class="emoji">📈</span> Relatórios</div>
+    <div class="nav-item" data-page="settings"><span class="emoji">⚙️</span> Configurações</div>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">🚪 Sair</button>
     </div>
@@ -840,6 +912,56 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
 
+    <!-- ═══ SETTINGS ═══ -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-header"><span class="card-title">🔗 Conexão com o Organizze</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px;">Para o app buscar seus dados, ele precisa do seu e-mail e do token da API do Organizze.</p>
+          <div style="background: var(--blue-light); border-left: 4px solid var(--blue); padding: 14px 16px; border-radius: 8px; margin: 16px 0; font-size: 14px; line-height: 1.5;">
+            <strong>Como obter seu token do Organizze:</strong><br>
+            1. Acesse <a href="https://app.organizze.com.br/configuracoes/api" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">app.organizze.com.br/configuracoes/api</a><br>
+            2. Clique em "Gerar token" (ou copie o existente)<br>
+            3. Cole abaixo e clique em "Salvar e conectar"
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">E-mail da sua conta no Organizze</label>
+            <input type="email" id="orgEmailInput" placeholder="seu@email.com" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Token da API</label>
+            <input type="password" id="orgTokenInput" placeholder="Cole seu token aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div id="orgConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="saveOrgConfig()">💾 Salvar e conectar</button>
+            <button class="btn btn-secondary" onclick="clearOrgConfig()">🗑️ Limpar credenciais</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header"><span class="card-title">🔒 Trocar senha do app</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px;">Defina uma nova senha para entrar no app. A senha é independente do Organizze.</p>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Senha atual</label>
+            <input type="password" id="changePassCurrent" autocomplete="current-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Nova senha (mínimo 6 caracteres)</label>
+            <input type="password" id="changePassNew" autocomplete="new-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Confirmar nova senha</label>
+            <input type="password" id="changePassConfirm" autocomplete="new-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div id="changePassStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <button class="btn btn-primary" onclick="submitChangePassword()">💾 Salvar nova senha</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -876,7 +998,47 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
+<!-- ═══════════ FORCE CHANGE PASSWORD OVERLAY ═══════════ -->
+<div id="forceChangeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--bg-card);border-radius:20px;padding:32px 28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="text-align:center;font-size:52px;margin-bottom:8px;">🔐</div>
+    <h2 style="text-align:center;color:var(--text);margin-bottom:8px;font-size:22px;">Troque sua senha</h2>
+    <p style="text-align:center;color:var(--text-secondary);margin-bottom:22px;font-size:14px;line-height:1.5;">Por segurança, defina uma senha pessoal antes de continuar.<br><span style="font-size:12px;opacity:0.7;">(Você entrou com a senha padrão)</span></p>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px;font-weight:500;">Nova senha (mínimo 6 caracteres)</label>
+      <input type="password" id="forceNewPass" autocomplete="new-password" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;" />
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px;font-weight:500;">Confirmar nova senha</label>
+      <input type="password" id="forceConfirmPass" autocomplete="new-password" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;" />
+    </div>
+    <div id="forceChangeStatus" style="font-size:13px;margin:12px 0;min-height:20px;"></div>
+    <button class="btn btn-primary" id="btnForceChange" style="width:100%;padding:14px;font-size:15px;" onclick="submitForceChange()">💾 Salvar nova senha</button>
+  </div>
+</div>
+
 <script>
+// ═══════════════════════════════════════════════
+//  GLOBAL ERROR REPORTING
+// ═══════════════════════════════════════════════
+function showError(prefix, err) {
+  try {
+    var banner = document.getElementById('__errBanner');
+    var txt = document.getElementById('__errBannerText');
+    if (!banner || !txt) { console.error(prefix, err); return; }
+    var msg = (err && (err.stack || err.message)) || String(err || '');
+    var existing = txt.textContent ? txt.textContent + '\n\n' : '';
+    txt.textContent = existing + '[' + prefix + '] ' + msg;
+    banner.classList.add('show');
+  } catch (_) { console.error(prefix, err); }
+}
+window.addEventListener('error', function(e) {
+  showError('window.error', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  showError('unhandledrejection', e.reason);
+});
+
 // ═══════════════════════════════════════════════
 //  CONFIGURATION & STATE
 // ═══════════════════════════════════════════════
@@ -948,45 +1110,520 @@ function memberTagHTML(m) {
 //  API
 // ═════════════════════════════════════════════════
 
+function getOrgCreds() {
+  return {
+    email: localStorage.getItem('org_email') || '',
+    token: localStorage.getItem('org_token') || ''
+  };
+}
+
 async function api(endpoint, options) {
   if (!options) options = {};
-  var url = '/api/proxy?endpoint=' + encodeURIComponent(endpoint);
-  var opts = { method: options.method || 'GET', headers: { 'Content-Type': 'application/json', 'X-Organizze-Email': APP.email, 'X-Organizze-Token': APP.token } };
-  if (options.body) opts.body = JSON.stringify(options.body);
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    var err = new Error('Organizze não configurado. Vá em Configurações para conectar.');
+    err.status = 0;
+    err.code = 'NO_ORG_CREDS';
+    throw err;
+  }
+  // Normaliza: remove barras iniciais para não virar "rest/v2//transactions"
+  var clean = String(endpoint).replace(/^\/+/, '');
+  var url = '/api/proxy?endpoint=' + encodeURIComponent(clean);
+  var opts = {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Organizze-Email': creds.email,
+      'X-Organizze-Token': creds.token
+    }
+  };
+  if (options.body !== undefined && options.body !== null) {
+    // Aceita objeto ou string; não faz dupla serialização.
+    opts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
   var r = await fetch(url, opts);
-  if (!r.ok) throw new Error('API erro: ' + r.status);
-  return r.json();
+  var text = await r.text();
+  var data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (_) { data = text; }
+  }
+  if (!r.ok) {
+    var reason = '';
+    if (data && typeof data === 'object') {
+      reason = data.error || data.message || data.errors || '';
+      if (typeof reason === 'object') reason = JSON.stringify(reason);
+    } else if (typeof data === 'string') {
+      reason = data;
+    }
+    var err = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
 }
 
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
+async function loadAll() {
+  var start = monthStart();
+  var end = monthEnd();
+  var results = await Promise.all([
+    api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
+    api('categories').catch(function(e){ console.warn('categories', e); return []; }),
+    api('transactions?start_date=' + start + '&end_date=' + end).catch(function(e){ console.warn('transactions', e); return []; }),
+    api('credit_cards').catch(function(e){ console.warn('credit_cards', e); return []; }),
+    api('budgets').catch(function(e){ console.warn('budgets', e); return []; })
+  ]);
+  STATE.accounts    = Array.isArray(results[0]) ? results[0] : [];
+  STATE.categories  = Array.isArray(results[1]) ? results[1] : [];
+  STATE.transactions = Array.isArray(results[2]) ? results[2] : [];
+  STATE.creditCards = Array.isArray(results[3]) ? results[3] : [];
+  STATE.budgets     = Array.isArray(results[4]) ? results[4] : [];
+  STATE.invoices = {};
+  for (var i = 0; i < STATE.creditCards.length; i++) {
+    var card = STATE.creditCards[i];
+    try {
+      STATE.invoices[card.id] = await api('credit_cards/' + card.id + '/invoices');
+    } catch (e) { console.warn('invoices ' + card.id, e); }
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  SUPABASE AUTH CLIENT
+// ═══════════════════════════════════════════════
+const SUPABASE_URL = 'https://xzayhcysxleshrntqdup.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_4AbKW5meho_uW1LzGCY98g_k5v6Ffg-';
+var SB = null;
+var __recoveryMode = false;
+
+try {
+  if (typeof supabase !== 'undefined' && supabase.createClient) {
+    SB = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'implicit'
+      }
+    });
+    // Escuta eventos de auth; PASSWORD_RECOVERY dispara quando o usuário
+    // abre o link de recuperação recebido por e-mail.
+    SB.auth.onAuthStateChange(function(event, session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        __recoveryMode = true;
+        showResetBox();
+      }
+    });
+  } else {
+    showError('supabase-init', new Error('supabase-js não carregou. Verifique sua conexão.'));
+  }
+} catch (e) {
+  showError('supabase-init', e);
+}
+
+// ═══════════════════════════════════════════════
+//  APP LOGIN (email + senha via Supabase Auth)
+// ═══════════════════════════════════════════════
 async function doLogin() {
   var email = document.getElementById('loginEmail').value.trim();
-  var token = document.getElementById('loginToken').value.trim();
-  if (!email || !token) { setLoginStatus('Preencha e-mail e token.'); return; }
-  setLoginStatus('Conectando...');
-  APP.email = email; APP.token = token;
+  var password = document.getElementById('loginPassword').value;
+  var btn = document.getElementById('btnLogin');
+  if (!email || !password) { setLoginStatus('Preencha e-mail e senha.'); return; }
+  if (!SB) { setLoginStatus('Cliente Supabase não inicializado.'); return; }
+  setLoginStatus('Autenticando...');
+  if (btn) btn.disabled = true;
+
+  try {
+    var result = await SB.auth.signInWithPassword({ email: email, password: password });
+    if (result.error) {
+      var msg = result.error.message || 'Falha na autenticação';
+      if (/invalid login credentials/i.test(msg)) msg = 'E-mail ou senha incorretos.';
+      else if (/email not confirmed/i.test(msg)) msg = 'E-mail ainda não confirmado.';
+      setLoginStatus(msg);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    var user = result.data && result.data.user;
+    if (!user) {
+      setLoginStatus('Resposta inválida do servidor.');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    APP.email = user.email;
+    APP.__user = user;
+    localStorage.setItem('app_email', user.email);
+  } catch (e) {
+    console.error('[AUTH] erro:', e);
+    setLoginStatus('Erro: ' + (e && e.message ? e.message : 'desconhecido'));
+    showError('login', e);
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  if (btn) btn.disabled = false;
+
+  // Mostrar app shell
+  try {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    setLoginStatus('');
+  } catch (e) { showError('showApp', e); }
+
+  // Se o usuário precisa trocar a senha (primeiro acesso com #123456), força a troca
+  var mustChange = getMustChangePassword();
+  if (mustChange) {
+    showForceChange();
+    return;
+  }
+
+  await continueAfterLogin();
+}
+
+function getMustChangePassword() {
+  try {
+    var s = SB && SB.auth && typeof SB.auth.getUser === 'function';
+    // Usamos o user do currentSession sincrono via localStorage cache
+    return !!(APP.__user && APP.__user.user_metadata && APP.__user.user_metadata.must_change_password);
+  } catch (_) { return false; }
+}
+
+async function continueAfterLogin() {
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    try {
+      renderPage('settings');
+      var s = document.getElementById('orgConfigStatus');
+      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso ao Organizze para começar.</span>';
+    } catch (e) { showError('renderPage(settings)', e); }
+    return;
+  }
+  try { await loadAll(); } catch (e) { showError('loadAll', e); }
+  try { renderPage('dashboard'); } catch (e) {
+    showError('renderPage(dashboard)', e);
+    try {
+      var ds = document.getElementById('dashStats');
+      if (ds) ds.innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><div>Falha ao renderizar dashboard. Veja o banner vermelho no topo.</div></div>';
+    } catch (_) {}
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  FORGOT PASSWORD (via Supabase)
+// ═══════════════════════════════════════════════
+function showForgotPassword() {
+  document.getElementById('loginBoxMain').style.display = 'none';
+  document.getElementById('loginBoxForgot').style.display = '';
+  var e = document.getElementById('forgotEmail');
+  var src = document.getElementById('loginEmail');
+  if (e && src && src.value) e.value = src.value;
+  document.getElementById('forgotStatus').textContent = '';
+}
+
+function hideForgotPassword() {
+  document.getElementById('loginBoxForgot').style.display = 'none';
+  document.getElementById('loginBoxMain').style.display = '';
+  document.getElementById('forgotStatus').textContent = '';
+}
+
+async function submitForgotPassword() {
+  var email = document.getElementById('forgotEmail').value.trim();
+  var status = document.getElementById('forgotStatus');
+  var btn = document.getElementById('btnForgot');
+  if (!email) { status.textContent = 'Informe o e-mail.'; return; }
+  if (!SB) { status.textContent = 'Cliente Supabase não inicializado.'; return; }
+  status.textContent = 'Enviando...';
+  if (btn) btn.disabled = true;
+  try {
+    var redirectTo = window.location.origin + window.location.pathname;
+    var result = await SB.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+    if (result.error) {
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + (result.error.message || 'Falha') + '</span>';
+    } else {
+      status.innerHTML = '<span style="color:#A5D6A7;">✅ Se o e-mail estiver cadastrado, você receberá um link em instantes. Verifique também a pasta de spam.</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RESET PASSWORD (após clicar no link do e-mail)
+//  Supabase detecta o token no hash da URL e dispara
+//  onAuthStateChange('PASSWORD_RECOVERY'); showResetBox é chamado.
+// ═══════════════════════════════════════════════
+function showResetBox() {
+  var main = document.getElementById('loginBoxMain');
+  var forgot = document.getElementById('loginBoxForgot');
+  var reset = document.getElementById('loginBoxReset');
+  var loginScreen = document.getElementById('loginScreen');
+  var app = document.getElementById('app');
+  // Garante que a tela de login está visível e o app não
+  if (app) app.classList.remove('active');
+  if (loginScreen) loginScreen.style.display = '';
+  if (main) main.style.display = 'none';
+  if (forgot) forgot.style.display = 'none';
+  if (reset) reset.style.display = '';
+}
+
+async function submitResetPassword() {
+  var n = document.getElementById('resetNewPass').value;
+  var c = document.getElementById('resetConfirmPass').value;
+  var status = document.getElementById('resetStatus');
+  var btn = document.getElementById('btnReset');
+  if (!SB) { status.textContent = 'Cliente Supabase não inicializado.'; return; }
+  if (!n || n.length < 6) { status.textContent = 'A senha deve ter pelo menos 6 caracteres.'; return; }
+  if (n !== c) { status.textContent = 'As senhas não conferem.'; return; }
+  if (n === '#123456') { status.textContent = 'Escolha uma senha diferente da padrão.'; return; }
+  status.textContent = 'Redefinindo...';
+  if (btn) btn.disabled = true;
+  try {
+    var result = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
+    });
+    if (result.error) {
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + (result.error.message || 'Falha') + '</span>';
+      if (btn) btn.disabled = false;
+      return;
+    }
+    status.innerHTML = '<span style="color:#A5D6A7;">✅ Senha redefinida! Redirecionando...</span>';
+    setTimeout(async function() {
+      await SB.auth.signOut();
+      // Remove o hash do URL e volta à tela de login
+      window.history.replaceState({}, document.title, window.location.pathname);
+      __recoveryMode = false;
+      document.getElementById('loginBoxReset').style.display = 'none';
+      document.getElementById('loginBoxMain').style.display = '';
+      var emailEl = document.getElementById('loginEmail');
+      if (emailEl && result.data && result.data.user && result.data.user.email) {
+        emailEl.value = result.data.user.email;
+      }
+      document.getElementById('loginPassword').focus();
+    }, 1500);
+  } catch (e) {
+    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  FORCE CHANGE PASSWORD (primeiro login com #123456)
+// ═══════════════════════════════════════════════
+function showForceChange() {
+  var overlay = document.getElementById('forceChangeOverlay');
+  if (overlay) overlay.style.display = 'flex';
+  document.getElementById('forceNewPass').value = '';
+  document.getElementById('forceConfirmPass').value = '';
+  document.getElementById('forceChangeStatus').textContent = '';
+}
+
+function hideForceChange() {
+  var overlay = document.getElementById('forceChangeOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function submitForceChange() {
+  var n = document.getElementById('forceNewPass').value;
+  var c = document.getElementById('forceConfirmPass').value;
+  var status = document.getElementById('forceChangeStatus');
+  var btn = document.getElementById('btnForceChange');
+  if (!SB) { status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não inicializado.</span>'; return; }
+  if (!n || n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A senha deve ter pelo menos 6 caracteres.</span>'; return; }
+  if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
+  if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
+  status.innerHTML = '<span style="color:var(--text-secondary);">Salvando...</span>';
+  if (btn) btn.disabled = true;
+  try {
+    var result = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
+    });
+    if (result.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + (result.error.message || 'Falha') + '</span>';
+      if (btn) btn.disabled = false;
+      return;
+    }
+    // Atualiza user local
+    if (result.data && result.data.user) APP.__user = result.data.user;
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+    setTimeout(async function() {
+      hideForceChange();
+      await continueAfterLogin();
+    }, 800);
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CHANGE PASSWORD (pela página Configurações)
+//  Verifica a senha atual re-autenticando e depois atualiza.
+// ═══════════════════════════════════════════════
+async function submitChangePassword() {
+  var cur = document.getElementById('changePassCurrent').value;
+  var n = document.getElementById('changePassNew').value;
+  var c = document.getElementById('changePassConfirm').value;
+  var status = document.getElementById('changePassStatus');
+  if (!SB) { status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não inicializado.</span>'; return; }
+  if (!cur || !n || !c) { status.innerHTML = '<span style="color:var(--red);">Preencha todos os campos.</span>'; return; }
+  if (n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ter pelo menos 6 caracteres.</span>'; return; }
+  if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
+  if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
+  if (n === cur) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ser diferente da atual.</span>'; return; }
+  status.innerHTML = '<span style="color:var(--text-secondary);">Verificando senha atual...</span>';
+  try {
+    // Re-autentica para validar a senha atual
+    var check = await SB.auth.signInWithPassword({ email: APP.email, password: cur });
+    if (check.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ Senha atual incorreta.</span>';
+      return;
+    }
+    status.innerHTML = '<span style="color:var(--text-secondary);">Salvando nova senha...</span>';
+    var update = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
+    });
+    if (update.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + (update.error.message || 'Falha') + '</span>';
+      return;
+    }
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+    document.getElementById('changePassCurrent').value = '';
+    document.getElementById('changePassNew').value = '';
+    document.getElementById('changePassConfirm').value = '';
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  }
+}
+
+async function doLogout() {
+  try { if (SB) await SB.auth.signOut(); } catch (e) { console.warn('signOut error', e); }
+  APP.email = '';
+  APP.__user = null;
+  STATE.accounts = [];
+  STATE.categories = [];
+  STATE.transactions = [];
+  STATE.creditCards = [];
+  STATE.budgets = [];
+  STATE.invoices = {};
+  // Nota: credenciais do Organizze são preservadas (mais conveniente).
+  // Use "Limpar credenciais" em Configurações para removê-las.
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('loginScreen').style.display = '';
+  var pwd = document.getElementById('loginPassword');
+  if (pwd) pwd.value = '';
+  setLoginStatus('');
+}
+
+async function checkSavedLogin() {
+  if (!SB) return;
+  // Se a URL tem hash de recuperação, deixa a tela de login para o usuário
+  // digitar a nova senha. O evento PASSWORD_RECOVERY vai disparar showResetBox.
+  if (window.location.hash && window.location.hash.indexOf('type=recovery') !== -1) {
+    return;
+  }
+  var savedEmail = localStorage.getItem('app_email');
+  if (savedEmail) {
+    var el = document.getElementById('loginEmail');
+    if (el) el.value = savedEmail;
+  }
+  try {
+    var sess = await SB.auth.getSession();
+    var session = sess && sess.data && sess.data.session;
+    if (!session || !session.user) return;
+    if (__recoveryMode) return;  // link de reset
+    APP.email = session.user.email;
+    APP.__user = session.user;
+    localStorage.setItem('app_email', session.user.email);
+  } catch (e) {
+    showError('checkSavedLogin:getSession', e);
+    return;
+  }
+
+  // Já autenticado: mostra o app shell
+  try {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+  } catch (e) { showError('checkSavedLogin:showApp', e); return; }
+
+  // Ainda precisa trocar a senha?
+  if (getMustChangePassword()) {
+    showForceChange();
+    return;
+  }
+
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    try { renderPage('settings'); } catch (e) { showError('checkSavedLogin:renderSettings', e); }
+    return;
+  }
+  try { await loadAll(); } catch (e) { showError('checkSavedLogin:loadAll', e); }
+  try { renderPage('dashboard'); } catch (e) { showError('checkSavedLogin:renderDashboard', e); }
+}
+
+// ═══════════════════════════════════════════════
+//  ORGANIZZE CONFIG (Settings page)
+// ═══════════════════════════════════════════════
+function renderSettings() {
+  var e = localStorage.getItem('org_email') || '';
+  var t = localStorage.getItem('org_token') || '';
+  var ei = document.getElementById('orgEmailInput');
+  var ti = document.getElementById('orgTokenInput');
+  if (ei) ei.value = e;
+  if (ti) ti.value = t;
+  var s = document.getElementById('orgConfigStatus');
+  if (s && !s.innerHTML) s.textContent = '';
+}
+
+async function saveOrgConfig() {
+  var email = document.getElementById('orgEmailInput').value.trim();
+  var token = document.getElementById('orgTokenInput').value.trim();
+  var status = document.getElementById('orgConfigStatus');
+  if (!email || !token) {
+    status.innerHTML = '<span style="color: var(--red);">Preencha e-mail e token.</span>';
+    return;
+  }
+  localStorage.setItem('org_email', email);
+  localStorage.setItem('org_token', token);
+  status.innerHTML = '<span style="color: var(--text-secondary);">Validando credenciais no Organizze...</span>';
   try {
     var accounts = await api('accounts');
-    if (!Array.isArray(accounts)) throw new Error('Resposta inválida');
-    APP.accounts = accounts;
-    localStorage.setItem('org_email', email); localStorage.setItem('org_token', token);
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = '';
+    if (!Array.isArray(accounts)) throw new Error('Resposta inesperada do Organizze');
+    STATE.accounts = accounts;
+    status.innerHTML = '<span style="color: var(--green-600);">✅ Conectado! Carregando dados...</span>';
+    await loadAll();
     renderPage('dashboard');
-  } catch (e) { console.error('[AUTH] Falha:', e); setLoginStatus('Falha na autenticação. Verifique e-mail e token.'); }
+  } catch (e) {
+    var msg;
+    if (e && e.status === 401) msg = 'Credenciais do Organizze inválidas. Confira e-mail e token.';
+    else if (e && e.status === 403) msg = 'Acesso negado pelo Organizze (403).';
+    else if (e && e.status) msg = 'Falha (' + e.status + '): ' + (e.message || 'erro');
+    else msg = 'Falha: ' + (e && e.message ? e.message : 'erro desconhecido');
+    status.innerHTML = '<span style="color: var(--red);">❌ ' + msg + '</span>';
+    showError('saveOrgConfig', e);
+    // Remove credenciais inválidas para não tentar usá-las de novo
+    localStorage.removeItem('org_email');
+    localStorage.removeItem('org_token');
+  }
 }
 
-function doLogout() {
-  APP.email = ''; APP.token = ''; APP.accounts = [];
-  localStorage.removeItem('org_email'); localStorage.removeItem('org_token');
-  document.getElementById('loginScreen').style.display = '';
-  document.getElementById('appScreen').style.display = 'none';
-}
-
-function checkSavedLogin() {
-  var e = localStorage.getItem('org_email'), t = localStorage.getItem('org_token');
-  if (e && t) { document.getElementById('loginEmail').value = e; document.getElementById('loginToken').value = t; }
+function clearOrgConfig() {
+  if (!confirm('Remover as credenciais do Organizze deste dispositivo?')) return;
+  localStorage.removeItem('org_email');
+  localStorage.removeItem('org_token');
+  STATE.accounts = [];
+  STATE.categories = [];
+  STATE.transactions = [];
+  STATE.creditCards = [];
+  STATE.budgets = [];
+  STATE.invoices = {};
+  document.getElementById('orgEmailInput').value = '';
+  document.getElementById('orgTokenInput').value = '';
+  document.getElementById('orgConfigStatus').innerHTML = '<span style="color: var(--text-secondary);">Credenciais removidas.</span>';
 }
 
 async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
@@ -1001,6 +1638,7 @@ const pageTitles = {
   cards: '💎 Cartões',
   family: '👨‍👩‍👧 Família',
   reports: '📈 Relatórios',
+  settings: '⚙️ Configurações',
 };
 
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -1025,6 +1663,7 @@ function renderPage(page) {
     case 'cards': renderCards(); break;
     case 'family': renderFamily(); break;
     case 'reports': renderReports(); break;
+    case 'settings': renderSettings(); break;
   }
 }
 
@@ -1063,55 +1702,66 @@ function loadTheme() {
 // ═══════════════════════════════════════════════
 //  DASHBOARD
 // ═══════════════════════════════════════════════
+function safeSection(name, fn) {
+  try { fn(); } catch (e) { showError('dashboard:' + name, e); }
+}
+
 function renderDashboard() {
-  const txs = STATE.transactions;
-  const balance = STATE.accounts.reduce((s, a) => s + (a.default ? 0 : 0), 0);
+  const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
   let income = 0, expense = 0;
   const catMap = {};
 
-  txs.forEach(t => {
-    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
-    if (val > 0) income += val;
-    else expense += Math.abs(val);
-    const catName = (STATE.categories.find(c => c.id === t.category_id) || {}).name || 'Outros';
-    if (val < 0) catMap[catName] = (catMap[catName] || 0) + Math.abs(val);
+  safeSection('totals', function() {
+    txs.forEach(t => {
+      const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+      if (val > 0) income += val;
+      else expense += Math.abs(val);
+      const catName = (STATE.categories.find(c => c.id === t.category_id) || {}).name || 'Outros';
+      if (val < 0) catMap[catName] = (catMap[catName] || 0) + Math.abs(val);
+    });
   });
 
-  const totalBalance = STATE.accounts.reduce((s, a) => s + (a.current_balance_in_cents || Math.round((a.current_balance || 0) * 100)), 0);
+  const totalBalance = (Array.isArray(STATE.accounts) ? STATE.accounts : []).reduce((s, a) => s + (a.current_balance_in_cents || Math.round((a.current_balance || 0) * 100)), 0);
   const net = income - expense;
 
   // Stats cards
-  document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-emoji">🏦</div>
-      <div class="stat-label">Saldo Consolidado</div>
-      <div class="stat-value ${totalBalance >= 0 ? 'positive' : 'negative'}">${centsToReal(totalBalance)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">📈</div>
-      <div class="stat-label">Receitas do Mês</div>
-      <div class="stat-value positive">${centsToReal(income)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">📉</div>
-      <div class="stat-label">Despesas do Mês</div>
-      <div class="stat-value negative">${centsToReal(expense)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">${net >= 0 ? '✅' : '⚠️'}</div>
-      <div class="stat-label">Resultado do Mês</div>
-      <div class="stat-value ${net >= 0 ? 'positive' : 'negative'}">${centsToReal(net)}</div>
-    </div>
-  `;
+  safeSection('stats', function() {
+    document.getElementById('dashStats').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-emoji">🏦</div>
+        <div class="stat-label">Saldo Consolidado</div>
+        <div class="stat-value ${totalBalance >= 0 ? 'positive' : 'negative'}">${centsToReal(totalBalance)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">📈</div>
+        <div class="stat-label">Receitas do Mês</div>
+        <div class="stat-value positive">${centsToReal(income)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">📉</div>
+        <div class="stat-label">Despesas do Mês</div>
+        <div class="stat-value negative">${centsToReal(expense)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">${net >= 0 ? '✅' : '⚠️'}</div>
+        <div class="stat-label">Resultado do Mês</div>
+        <div class="stat-value ${net >= 0 ? 'positive' : 'negative'}">${centsToReal(net)}</div>
+      </div>
+    `;
+  });
 
   // Income vs Expense chart
-  renderBarChart('chartIncome', ['Receitas','Despesas'], [income/100, expense/100], ['#43A047','#C62828']);
+  safeSection('chartIncome', function() {
+    renderBarChart('chartIncome', ['Receitas','Despesas'], [income/100, expense/100], ['#43A047','#C62828']);
+  });
 
   // Category donut
-  const catLabels = Object.keys(catMap).slice(0, 8);
-  const catValues = catLabels.map(k => catMap[k] / 100);
-  const catColors = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#C62828','#00838F','#4E342E','#F9A825'];
-  renderDoughnutChart('chartCategory', catLabels, catValues, catColors);
+  safeSection('chartCategory', function() {
+    const catLabels = Object.keys(catMap).slice(0, 8);
+    const catValues = catLabels.map(k => catMap[k] / 100);
+    const catColors = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#C62828','#00838F','#4E342E','#F9A825'];
+    renderDoughnutChart('chartCategory', catLabels, catValues, catColors);
+  });
 
   // Health score
   let score = 50;
@@ -1119,52 +1769,57 @@ function renderDashboard() {
     const savingsRate = (income - expense) / income;
     score = Math.round(Math.min(100, Math.max(0, savingsRate * 200 + 20)));
   }
-  const scoreEl = document.getElementById('healthScore');
-  scoreEl.innerHTML = `
-    <div class="score-circle" style="--score:${score}">
-      <div class="score-number">${score}</div>
-      <div class="score-label">de 100</div>
-    </div>
-    <div class="score-details">
-      <div class="score-detail-item"><span>Taxa de poupança</span><span>${income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0}%</span></div>
-      <div class="score-detail-item"><span>Receitas</span><span class="positive">${centsToReal(income)}</span></div>
-      <div class="score-detail-item"><span>Despesas</span><span class="negative">${centsToReal(expense)}</span></div>
-      <div class="score-detail-item"><span>Nº Transações</span><span>${txs.length}</span></div>
-      <div class="score-detail-item"><span>Contas ativas</span><span>${STATE.accounts.length}</span></div>
-    </div>
-  `;
+  safeSection('health', function() {
+    const scoreEl = document.getElementById('healthScore');
+    scoreEl.innerHTML = `
+      <div class="score-circle" style="--score:${score}">
+        <div class="score-number">${score}</div>
+        <div class="score-label">de 100</div>
+      </div>
+      <div class="score-details">
+        <div class="score-detail-item"><span>Taxa de poupança</span><span>${income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0}%</span></div>
+        <div class="score-detail-item"><span>Receitas</span><span class="positive">${centsToReal(income)}</span></div>
+        <div class="score-detail-item"><span>Despesas</span><span class="negative">${centsToReal(expense)}</span></div>
+        <div class="score-detail-item"><span>Nº Transações</span><span>${txs.length}</span></div>
+        <div class="score-detail-item"><span>Contas ativas</span><span>${(STATE.accounts || []).length}</span></div>
+      </div>
+    `;
+  });
 
   // Alerts
-  const alerts = [];
-  if (expense > income) alerts.push({type:'danger', msg:'Despesas ultrapassaram receitas este mês!'});
-  if (score < 30) alerts.push({type:'warning', msg:'Score de saúde financeira abaixo de 30. Atenção!'});
+  safeSection('alerts', function() {
+    const alerts = [];
+    if (expense > income) alerts.push({type:'danger', msg:'Despesas ultrapassaram receitas este mês!'});
+    if (score < 30) alerts.push({type:'warning', msg:'Score de saúde financeira abaixo de 30. Atenção!'});
 
-  STATE.budgets.forEach(b => {
-    const spent = Math.abs(b.activity_cents || Math.round((b.activity || 0) * 100));
-    const limit = b.amount_cents || Math.round((b.amount || 0) * 100);
-    if (limit > 0 && spent > limit * 0.9) {
-      const catName = (STATE.categories.find(c => c.id === b.category_id) || {}).name || 'Categoria';
-      alerts.push({type: spent > limit ? 'danger' : 'warning', msg: `${catName}: ${(spent/limit*100).toFixed(0)}% do orçamento usado`});
-    }
-  });
-
-  // Card invoices due soon
-  Object.entries(STATE.invoices).forEach(([cardId, invs]) => {
-    const card = STATE.creditCards.find(c => c.id == cardId);
-    const upcoming = invs.find(i => i.status === 'open' || i.status === 'future');
-    if (upcoming && upcoming.due_date) {
-      const daysUntil = Math.ceil((new Date(upcoming.due_date) - new Date()) / 86400000);
-      if (daysUntil <= 7 && daysUntil >= 0) {
-        alerts.push({type:'info', msg:`Fatura ${card?.name || 'Cartão'} vence em ${daysUntil} dias: ${centsToReal(upcoming.amount_cents || Math.round((upcoming.amount||0)*100))}`});
+    (STATE.budgets || []).forEach(b => {
+      const spent = Math.abs(b.activity_cents || Math.round((b.activity || 0) * 100));
+      const limit = b.amount_cents || Math.round((b.amount || 0) * 100);
+      if (limit > 0 && spent > limit * 0.9) {
+        const catName = (STATE.categories.find(c => c.id === b.category_id) || {}).name || 'Categoria';
+        alerts.push({type: spent > limit ? 'danger' : 'warning', msg: `${catName}: ${(spent/limit*100).toFixed(0)}% do orçamento usado`});
       }
-    }
+    });
+
+    // Card invoices due soon - tolerate invs ser objeto ou ausente
+    Object.entries(STATE.invoices || {}).forEach(([cardId, invs]) => {
+      const list = Array.isArray(invs) ? invs : (invs && Array.isArray(invs.invoices) ? invs.invoices : []);
+      const card = (STATE.creditCards || []).find(c => c.id == cardId);
+      const upcoming = list.find(i => i.status === 'open' || i.status === 'future');
+      if (upcoming && upcoming.due_date) {
+        const daysUntil = Math.ceil((new Date(upcoming.due_date) - new Date()) / 86400000);
+        if (daysUntil <= 7 && daysUntil >= 0) {
+          alerts.push({type:'info', msg:`Fatura ${card?.name || 'Cartão'} vence em ${daysUntil} dias: ${centsToReal(upcoming.amount_cents || Math.round((upcoming.amount||0)*100))}`});
+        }
+      }
+    });
+
+    if (alerts.length === 0) alerts.push({type:'info', msg:'Nenhum alerta no momento. Tudo em ordem! 🎉'});
+
+    document.getElementById('alertsContainer').innerHTML = alerts.map(a =>
+      `<div class="alert alert-${a.type}"><span>${a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️'}</span> ${a.msg}</div>`
+    ).join('');
   });
-
-  if (alerts.length === 0) alerts.push({type:'info', msg:'Nenhum alerta no momento. Tudo em ordem! 🎉'});
-
-  document.getElementById('alertsContainer').innerHTML = alerts.map(a =>
-    `<div class="alert alert-${a.type}"><span>${a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️'}</span> ${a.msg}</div>`
-  ).join('');
 }
 
 // ═══════════════════════════════════════════════
@@ -1279,9 +1934,9 @@ async function saveTransaction() {
   btn.textContent = 'Salvando...';
 
   try {
-    await api('/transactions', {
+    await api('transactions', {
       method: 'POST',
-      body: JSON.stringify(payload)
+      body: payload
     });
     closeModal();
     await applyFilters();
@@ -1627,6 +2282,29 @@ document.addEventListener('keydown', e => {
 // ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
+// Enter no campo de senha dispara o login
+['loginEmail','loginPassword'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter') doLogin();
+  });
+});
+// Enter no e-mail de recuperação dispara o envio
+var fgE = document.getElementById('forgotEmail');
+if (fgE) fgE.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitForgotPassword();
+});
+// Enter no campo de confirmar reset dispara o reset
+var rsC = document.getElementById('resetConfirmPass');
+if (rsC) rsC.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitResetPassword();
+});
+// Enter no campo de confirmar troca obrigatória
+var fcC = document.getElementById('forceConfirmPass');
+if (fcC) fcC.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitForceChange();
+});
+
 loadTheme();
 checkSavedLogin();
 </script>
