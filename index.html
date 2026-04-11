@@ -6,6 +6,8 @@
 <title>Família Metzger - Gestão Financeira</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -823,7 +825,12 @@ tr:hover td { background: var(--bg-card-alt); }
       <div class="card">
         <div class="card-header">
           <span class="card-title">🔍 Filtros</span>
-          <button class="btn btn-primary btn-sm" onclick="openModal('newTransaction')">➕ Novo</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Exportar como PDF">📄 PDF</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportPrint()" title="Imprimir">🖨️ Imprimir</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportWhatsApp()" title="Enviar via WhatsApp">💬 WhatsApp</button>
+            <button class="btn btn-primary btn-sm" onclick="openModal('newTransaction')">➕ Novo</button>
+          </div>
         </div>
         <div class="filter-bar">
           <div class="form-col"><label>Data Início</label><input type="date" id="filterStart" /></div>
@@ -835,6 +842,16 @@ tr:hover td { background: var(--bg-card-alt); }
             <select id="filterMember"><option value="">Todos</option><option value="alfredo">Alfredo</option><option value="esposa">Fabiana</option><option value="familia">Família</option></select>
           </div>
           <div class="form-col"><label>Buscar</label><input type="text" id="filterSearch" placeholder="Descrição..." /></div>
+          <div class="form-col"><label>Por página</label>
+            <select id="filterPerPage" onchange="setPerPage(this.value)">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="-1">Todas</option>
+            </select>
+          </div>
           <div class="form-col" style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="applyFilters()">Filtrar</button></div>
         </div>
       </div>
@@ -1054,7 +1071,8 @@ let STATE = {
   invoices: {},
   currentPage: 'dashboard',
   txPage: 1,
-  txPerPage: 20,
+  txPerPage: 25,
+  txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
   reportMonths: 6,
 };
 const CHARTS = {};
@@ -1830,7 +1848,27 @@ function renderTransactions() {
   const end = document.getElementById('filterEnd');
   if (!start.value) start.value = monthStart();
   if (!end.value) end.value = monthEnd();
-  populateTxTable(STATE.transactions);
+  // Sincroniza o select de items por página com o STATE atual
+  const perSel = document.getElementById('filterPerPage');
+  if (perSel) perSel.value = String(STATE.txPerPage);
+  STATE.txLastFiltered = [...STATE.transactions];
+  populateTxTable(STATE.txLastFiltered);
+}
+
+// Retorna a lista de transações aplicando os filtros da UI sem re-fetch.
+function getFilteredTransactions() {
+  let txs = [...(STATE.transactions || [])];
+  const typeEl = document.getElementById('filterType');
+  const type = typeEl ? typeEl.value : '';
+  if (type === 'income') txs = txs.filter(t => (t.amount_cents || t.amount * 100) > 0);
+  if (type === 'expense') txs = txs.filter(t => (t.amount_cents || t.amount * 100) < 0);
+  const memEl = document.getElementById('filterMember');
+  const member = memEl ? memEl.value : '';
+  if (member) txs = txs.filter(t => guessMember(t.description) === member);
+  const searchEl = document.getElementById('filterSearch');
+  const search = searchEl ? searchEl.value.toLowerCase() : '';
+  if (search) txs = txs.filter(t => (t.description || '').toLowerCase().includes(search));
+  return txs;
 }
 
 async function applyFilters() {
@@ -1838,28 +1876,30 @@ async function applyFilters() {
   const end = document.getElementById('filterEnd').value || monthEnd();
   try {
     STATE.transactions = await fetchTransactions(start, end);
-    let txs = [...STATE.transactions];
-
-    const type = document.getElementById('filterType').value;
-    if (type === 'income') txs = txs.filter(t => (t.amount_cents || t.amount * 100) > 0);
-    if (type === 'expense') txs = txs.filter(t => (t.amount_cents || t.amount * 100) < 0);
-
-    const member = document.getElementById('filterMember').value;
-    if (member) txs = txs.filter(t => guessMember(t.description) === member);
-
-    const search = document.getElementById('filterSearch').value.toLowerCase();
-    if (search) txs = txs.filter(t => (t.description || '').toLowerCase().includes(search));
-
+    const txs = getFilteredTransactions();
+    STATE.txLastFiltered = txs;
     STATE.txPage = 1;
     populateTxTable(txs);
   } catch(e) {
     console.error(e);
+    showError('applyFilters', e);
   }
 }
 
+function setPerPage(v) {
+  const n = parseInt(v, 10);
+  if (isNaN(n)) return;
+  STATE.txPerPage = n;
+  STATE.txPage = 1;
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+}
+
 function populateTxTable(txs) {
-  const start = (STATE.txPage - 1) * STATE.txPerPage;
-  const page = txs.slice(start, start + STATE.txPerPage);
+  const perPage = STATE.txPerPage;
+  const showAll = perPage === -1;
+  const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
+  const end = showAll ? txs.length : start + perPage;
+  const page = txs.slice(start, end);
   const body = document.getElementById('transactionsBody');
 
   if (page.length === 0) {
@@ -1880,14 +1920,251 @@ function populateTxTable(txs) {
   }
 
   // Pagination
-  const totalPages = Math.ceil(txs.length / STATE.txPerPage);
   const pag = document.getElementById('txPagination');
-  if (totalPages <= 1) { pag.innerHTML = ''; return; }
-  let html = '';
-  for (let i = 1; i <= totalPages; i++) {
-    html += `<button class="btn btn-sm ${i === STATE.txPage ? 'btn-primary' : 'btn-secondary'}" onclick="STATE.txPage=${i};populateTxTable(STATE.transactions)">${i}</button>`;
+  if (showAll) {
+    pag.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${txs.length} transações</div>`;
+    return;
   }
+  const totalPages = Math.ceil(txs.length / perPage);
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  // Compact pagination: primeiras 3, atual ±1, últimas 3, com "..."
+  const cur = STATE.txPage;
+  const pages = new Set();
+  [1, 2, 3, totalPages - 2, totalPages - 1, totalPages, cur - 1, cur, cur + 1].forEach(n => {
+    if (n >= 1 && n <= totalPages) pages.add(n);
+  });
+  const sorted = [...pages].sort((a, b) => a - b);
+  let html = '';
+  // Prev
+  html += `<button class="btn btn-sm btn-secondary" ${cur === 1 ? 'disabled' : ''} onclick="STATE.txPage=${Math.max(1,cur-1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">‹</button>`;
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
+    html += `<button class="btn btn-sm ${p === cur ? 'btn-primary' : 'btn-secondary'}" onclick="STATE.txPage=${p};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">${p}</button>`;
+    prev = p;
+  }
+  html += `<button class="btn btn-sm btn-secondary" ${cur === totalPages ? 'disabled' : ''} onclick="STATE.txPage=${Math.min(totalPages,cur+1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">›</button>`;
   pag.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════
+//  EXPORT (PDF / IMPRESSÃO / WHATSAPP)
+// ═══════════════════════════════════════════════
+function getPeriodLabel() {
+  const s = document.getElementById('filterStart').value || monthStart();
+  const e = document.getElementById('filterEnd').value || monthEnd();
+  return fmtDate(s) + ' a ' + fmtDate(e);
+}
+
+function getTotalsFromTxs(txs) {
+  let income = 0, expense = 0;
+  txs.forEach(t => {
+    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+    if (v > 0) income += v;
+    else expense += Math.abs(v);
+  });
+  return { income, expense, net: income - expense };
+}
+
+function txsForExport() {
+  // Usa o resultado filtrado mais recente (mesmas linhas que o usuário está vendo).
+  return STATE.txLastFiltered.length ? STATE.txLastFiltered : getFilteredTransactions();
+}
+
+function exportPDF() {
+  try {
+    if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+      alert('Biblioteca jsPDF ainda carregando. Tente novamente em alguns segundos.');
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const txs = txsForExport();
+    const period = getPeriodLabel();
+    const totals = getTotalsFromTxs(txs);
+
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(46, 125, 50);
+    doc.text('Familia Metzger - Lancamentos', 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text('Periodo: ' + period, 14, 25);
+    doc.text('Total: ' + txs.length + ' lancamento' + (txs.length === 1 ? '' : 's'), 14, 31);
+    doc.setTextColor(46, 125, 50);
+    doc.text('Receitas: ' + centsToReal(totals.income).replace('R$', 'R$ '), 14, 37);
+    doc.setTextColor(198, 40, 40);
+    doc.text('Despesas: ' + centsToReal(totals.expense).replace('R$', 'R$ '), 14, 43);
+    doc.setTextColor(totals.net >= 0 ? 46 : 198, totals.net >= 0 ? 125 : 40, totals.net >= 0 ? 50 : 40);
+    doc.text('Saldo: ' + centsToReal(totals.net).replace('R$', 'R$ '), 14, 49);
+
+    // Table
+    const rows = txs.map(t => {
+      const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+      const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '-';
+      const mem = guessMember(t.description);
+      const memLabel = mem === 'alfredo' ? 'Alfredo' : mem === 'esposa' ? 'Fabiana' : 'Familia';
+      return [
+        fmtDate(t.date),
+        (t.description || '-').substring(0, 50),
+        cat.substring(0, 20),
+        memLabel,
+        centsToReal(val).replace('R$', 'R$ ')
+      ];
+    });
+
+    doc.autoTable({
+      head: [['Data', 'Descricao', 'Categoria', 'Membro', 'Valor']],
+      body: rows,
+      startY: 55,
+      theme: 'striped',
+      headStyles: { fillColor: [46, 125, 50], textColor: 255, fontSize: 9, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: 40 },
+      alternateRowStyles: { fillColor: [240, 247, 240] },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+      },
+      didParseCell: function(data) {
+        if (data.section === 'body' && data.column.index === 4) {
+          const raw = data.cell.raw;
+          if (typeof raw === 'string' && raw.indexOf('-') !== -1) {
+            data.cell.styles.textColor = [198, 40, 40];
+          } else if (typeof raw === 'string') {
+            data.cell.styles.textColor = [46, 125, 50];
+          }
+        }
+      }
+    });
+
+    // Footer: pagina X de Y
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('Pagina ' + i + ' de ' + pages, doc.internal.pageSize.getWidth() - 30, doc.internal.pageSize.getHeight() - 8);
+      doc.text('Gerado em ' + new Date().toLocaleString('pt-BR'), 14, doc.internal.pageSize.getHeight() - 8);
+    }
+
+    doc.save('lancamentos-' + today() + '.pdf');
+  } catch (e) {
+    showError('exportPDF', e);
+    alert('Erro ao gerar PDF: ' + (e.message || 'desconhecido'));
+  }
+}
+
+function exportPrint() {
+  try {
+    const txs = txsForExport();
+    const period = getPeriodLabel();
+    const totals = getTotalsFromTxs(txs);
+    const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    let html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Lançamentos - Família Metzger</title>';
+    html += '<style>';
+    html += 'body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#1a2e1a;max-width:1000px;margin:0 auto;}';
+    html += 'h1{color:#2E7D32;margin:0 0 4px;font-size:22px;}';
+    html += '.subtitle{color:#666;font-size:12px;margin-bottom:8px;}';
+    html += '.meta{color:#555;font-size:13px;margin-bottom:14px;}';
+    html += '.totals{background:#E8F5E9;padding:12px 16px;border-radius:6px;margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap;font-size:13px;border-left:4px solid #2E7D32;}';
+    html += '.totals span{display:inline-block;}';
+    html += 'table{width:100%;border-collapse:collapse;font-size:11px;}';
+    html += 'th{background:#2E7D32;color:#fff;text-align:left;padding:8px 6px;font-size:11px;}';
+    html += 'th.right,td.right{text-align:right;}';
+    html += 'td{padding:6px;border-bottom:1px solid #d0e0d0;}';
+    html += 'tr:nth-child(even) td{background:#f7faf7;}';
+    html += '.pos{color:#2E7D32;font-weight:bold;}';
+    html += '.neg{color:#C62828;font-weight:bold;}';
+    html += '.footer{margin-top:20px;text-align:center;color:#888;font-size:11px;}';
+    html += '@media print{.no-print{display:none;}body{padding:10px;}}';
+    html += '@page{margin:1.2cm;}';
+    html += '</style></head><body>';
+    html += '<h1>🌿 Família Metzger</h1>';
+    html += '<div class="subtitle">Gestão Financeira · Lançamentos</div>';
+    html += '<div class="meta"><strong>Período:</strong> ' + esc(period) + ' &nbsp;·&nbsp; <strong>Total:</strong> ' + txs.length + ' lançamento' + (txs.length === 1 ? '' : 's') + '</div>';
+    html += '<div class="totals">';
+    html += '<span>💰 <strong>Receitas:</strong> <span class="pos">' + centsToReal(totals.income) + '</span></span>';
+    html += '<span>💸 <strong>Despesas:</strong> <span class="neg">' + centsToReal(totals.expense) + '</span></span>';
+    html += '<span>📊 <strong>Saldo:</strong> <span class="' + (totals.net >= 0 ? 'pos' : 'neg') + '">' + centsToReal(totals.net) + '</span></span>';
+    html += '</div>';
+    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Membro</th><th class="right">Valor</th></tr></thead><tbody>';
+    txs.forEach(t => {
+      const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+      const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
+      const mem = guessMember(t.description);
+      const memLabel = mem === 'alfredo' ? '👨‍⚕️ Alfredo' : mem === 'esposa' ? '👩‍⚕️ Fabiana' : '👨‍👩‍👧 Família';
+      html += '<tr>';
+      html += '<td>' + esc(fmtDate(t.date)) + '</td>';
+      html += '<td>' + esc(t.description || '—') + '</td>';
+      html += '<td>' + esc(cat) + '</td>';
+      html += '<td>' + memLabel + '</td>';
+      html += '<td class="right ' + (val >= 0 ? 'pos' : 'neg') + '">' + centsToReal(val) + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div class="footer">Gerado em ' + new Date().toLocaleString('pt-BR') + '</div>';
+    html += '<div class="no-print" style="margin-top:20px;text-align:center;"><button onclick="window.print()" style="padding:10px 20px;background:#2E7D32;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;">🖨️ Imprimir</button></div>';
+    html += '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});<' + '/script>';
+    html += '</body></html>';
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Pop-ups bloqueados. Permita pop-ups para este site e tente novamente.');
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+  } catch (e) {
+    showError('exportPrint', e);
+    alert('Erro ao preparar impressão: ' + (e.message || 'desconhecido'));
+  }
+}
+
+function exportWhatsApp() {
+  try {
+    const txs = txsForExport();
+    const period = getPeriodLabel();
+    const totals = getTotalsFromTxs(txs);
+
+    const lines = [];
+    lines.push('🌿 *Família Metzger - Lançamentos*');
+    lines.push('📅 ' + period);
+    lines.push('');
+    lines.push('💰 Receitas: *' + centsToReal(totals.income) + '*');
+    lines.push('💸 Despesas: *' + centsToReal(totals.expense) + '*');
+    lines.push((totals.net >= 0 ? '✅' : '⚠️') + ' Saldo: *' + centsToReal(totals.net) + '*');
+    lines.push('📝 ' + txs.length + ' lançamento' + (txs.length === 1 ? '' : 's'));
+    lines.push('');
+
+    // Limita para não estourar o tamanho da URL (wa.me ~2000-4000 chars)
+    const MAX = 30;
+    const toShow = txs.slice(0, MAX);
+    if (toShow.length) lines.push('_Lançamentos:_');
+    toShow.forEach(t => {
+      const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+      const desc = (t.description || '').substring(0, 32);
+      const prefix = val >= 0 ? '✅' : '🔻';
+      lines.push(prefix + ' ' + fmtDate(t.date) + ' · ' + desc + ': ' + centsToReal(val));
+    });
+    if (txs.length > MAX) {
+      lines.push('');
+      lines.push('_...e mais ' + (txs.length - MAX) + ' lançamentos. Use a exportação em PDF para ver tudo._');
+    }
+    lines.push('');
+    lines.push('_Gerado pelo app Família Metzger_');
+
+    const msg = lines.join('\n');
+    const url = 'https://wa.me/?text=' + encodeURIComponent(msg);
+    window.open(url, '_blank');
+  } catch (e) {
+    showError('exportWhatsApp', e);
+    alert('Erro ao preparar WhatsApp: ' + (e.message || 'desconhecido'));
+  }
 }
 
 // ═══════════════════════════════════════════════
