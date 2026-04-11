@@ -68,6 +68,36 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 
+/* ─── GLOBAL ERROR BANNER ─── */
+#__errBanner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 99999;
+  background: #C62828;
+  color: #fff;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 10px 40px 10px 14px;
+  max-height: 40vh;
+  overflow: auto;
+  display: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+#__errBanner.show { display: block; }
+#__errBanner .close {
+  position: absolute;
+  top: 6px; right: 10px;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
 /* ─── SCROLLBAR ─── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -667,6 +697,9 @@ tr:hover td { background: var(--bg-card-alt); }
 </head>
 <body>
 
+<!-- ═══════════ ERROR BANNER ═══════════ -->
+<div id="__errBanner"><button class="close" onclick="document.getElementById('__errBanner').classList.remove('show')">×</button><span id="__errBannerText"></span></div>
+
 <!-- ═══════════ LOGIN ═══════════ -->
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
@@ -878,6 +911,27 @@ tr:hover td { background: var(--bg-card-alt); }
 
 <script>
 // ═══════════════════════════════════════════════
+//  GLOBAL ERROR REPORTING
+// ═══════════════════════════════════════════════
+function showError(prefix, err) {
+  try {
+    var banner = document.getElementById('__errBanner');
+    var txt = document.getElementById('__errBannerText');
+    if (!banner || !txt) { console.error(prefix, err); return; }
+    var msg = (err && (err.stack || err.message)) || String(err || '');
+    var existing = txt.textContent ? txt.textContent + '\n\n' : '';
+    txt.textContent = existing + '[' + prefix + '] ' + msg;
+    banner.classList.add('show');
+  } catch (_) { console.error(prefix, err); }
+}
+window.addEventListener('error', function(e) {
+  showError('window.error', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  showError('unhandledrejection', e.reason);
+});
+
+// ═══════════════════════════════════════════════
 //  CONFIGURATION & STATE
 // ═══════════════════════════════════════════════
 const API_BASE = 'https://api.organizze.com.br/rest/v2';
@@ -1021,35 +1075,58 @@ async function doLogin() {
   setLoginStatus('Conectando ao Organizze...');
   if (btn) btn.disabled = true;
   APP.email = email; APP.token = token;
+
+  // --- 1. AUTH: se essa etapa falha, continuamos na tela de login ---
   try {
     var accounts = await api('accounts');
-    if (!Array.isArray(accounts)) throw new Error('Resposta inválida do servidor');
+    if (!Array.isArray(accounts)) throw new Error('Resposta inválida do servidor (accounts)');
     STATE.accounts = accounts;
     localStorage.setItem('org_email', email);
     localStorage.setItem('org_token', token);
-    setLoginStatus('Carregando dados...');
-    await loadAll();
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('app').classList.add('active');
-    renderPage('dashboard');
-    setLoginStatus('');
   } catch (e) {
     console.error('[AUTH] Falha:', e);
     var msg;
-    if (e && e.status === 401) {
-      msg = 'Credenciais inválidas. Confira e-mail e token.';
-    } else if (e && e.status === 403) {
-      msg = 'Acesso negado (403). Verifique permissões do token.';
-    } else if (e && e.status) {
-      msg = 'Falha (' + e.status + '): ' + (e.message || 'erro desconhecido');
-    } else {
-      msg = 'Falha de rede: ' + (e && e.message ? e.message : 'erro desconhecido');
-    }
+    if (e && e.status === 401) msg = 'Credenciais inválidas. Confira e-mail e token.';
+    else if (e && e.status === 403) msg = 'Acesso negado (403). Verifique permissões do token.';
+    else if (e && e.status) msg = 'Falha (' + e.status + '): ' + (e.message || 'erro');
+    else msg = 'Falha de rede: ' + (e && e.message ? e.message : 'erro');
     setLoginStatus(msg);
+    showError('login', e);
     APP.email = ''; APP.token = '';
-  } finally {
     if (btn) btn.disabled = false;
+    return;
   }
+
+  // --- 2. MOSTRAR O APP PRIMEIRO (antes de carregar dados pesados) ---
+  // Isso garante que, se loadAll ou renderDashboard falhar, o usuário
+  // ainda vê a shell do aplicativo em vez de uma tela em branco.
+  try {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+    setLoginStatus('');
+  } catch (e) { showError('showApp', e); }
+
+  // --- 3. Carregar dados (cada chamada já tem .catch interno) ---
+  setLoginStatus('Carregando dados...');
+  try {
+    await loadAll();
+  } catch (e) {
+    showError('loadAll', e);
+  }
+
+  // --- 4. Renderizar dashboard (erros aqui não devem zerar a tela) ---
+  try {
+    renderPage('dashboard');
+  } catch (e) {
+    showError('renderPage(dashboard)', e);
+    // Fallback mínimo para garantir que algo apareça
+    try {
+      var ds = document.getElementById('dashStats');
+      if (ds) ds.innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><div>Falha ao renderizar dashboard. Veja o banner vermelho no topo.</div></div>';
+    } catch (_) {}
+  }
+
+  if (btn) btn.disabled = false;
 }
 
 function doLogout() {
@@ -1151,55 +1228,66 @@ function loadTheme() {
 // ═══════════════════════════════════════════════
 //  DASHBOARD
 // ═══════════════════════════════════════════════
+function safeSection(name, fn) {
+  try { fn(); } catch (e) { showError('dashboard:' + name, e); }
+}
+
 function renderDashboard() {
-  const txs = STATE.transactions;
-  const balance = STATE.accounts.reduce((s, a) => s + (a.default ? 0 : 0), 0);
+  const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
   let income = 0, expense = 0;
   const catMap = {};
 
-  txs.forEach(t => {
-    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
-    if (val > 0) income += val;
-    else expense += Math.abs(val);
-    const catName = (STATE.categories.find(c => c.id === t.category_id) || {}).name || 'Outros';
-    if (val < 0) catMap[catName] = (catMap[catName] || 0) + Math.abs(val);
+  safeSection('totals', function() {
+    txs.forEach(t => {
+      const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+      if (val > 0) income += val;
+      else expense += Math.abs(val);
+      const catName = (STATE.categories.find(c => c.id === t.category_id) || {}).name || 'Outros';
+      if (val < 0) catMap[catName] = (catMap[catName] || 0) + Math.abs(val);
+    });
   });
 
-  const totalBalance = STATE.accounts.reduce((s, a) => s + (a.current_balance_in_cents || Math.round((a.current_balance || 0) * 100)), 0);
+  const totalBalance = (Array.isArray(STATE.accounts) ? STATE.accounts : []).reduce((s, a) => s + (a.current_balance_in_cents || Math.round((a.current_balance || 0) * 100)), 0);
   const net = income - expense;
 
   // Stats cards
-  document.getElementById('dashStats').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-emoji">🏦</div>
-      <div class="stat-label">Saldo Consolidado</div>
-      <div class="stat-value ${totalBalance >= 0 ? 'positive' : 'negative'}">${centsToReal(totalBalance)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">📈</div>
-      <div class="stat-label">Receitas do Mês</div>
-      <div class="stat-value positive">${centsToReal(income)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">📉</div>
-      <div class="stat-label">Despesas do Mês</div>
-      <div class="stat-value negative">${centsToReal(expense)}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-emoji">${net >= 0 ? '✅' : '⚠️'}</div>
-      <div class="stat-label">Resultado do Mês</div>
-      <div class="stat-value ${net >= 0 ? 'positive' : 'negative'}">${centsToReal(net)}</div>
-    </div>
-  `;
+  safeSection('stats', function() {
+    document.getElementById('dashStats').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-emoji">🏦</div>
+        <div class="stat-label">Saldo Consolidado</div>
+        <div class="stat-value ${totalBalance >= 0 ? 'positive' : 'negative'}">${centsToReal(totalBalance)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">📈</div>
+        <div class="stat-label">Receitas do Mês</div>
+        <div class="stat-value positive">${centsToReal(income)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">📉</div>
+        <div class="stat-label">Despesas do Mês</div>
+        <div class="stat-value negative">${centsToReal(expense)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-emoji">${net >= 0 ? '✅' : '⚠️'}</div>
+        <div class="stat-label">Resultado do Mês</div>
+        <div class="stat-value ${net >= 0 ? 'positive' : 'negative'}">${centsToReal(net)}</div>
+      </div>
+    `;
+  });
 
   // Income vs Expense chart
-  renderBarChart('chartIncome', ['Receitas','Despesas'], [income/100, expense/100], ['#43A047','#C62828']);
+  safeSection('chartIncome', function() {
+    renderBarChart('chartIncome', ['Receitas','Despesas'], [income/100, expense/100], ['#43A047','#C62828']);
+  });
 
   // Category donut
-  const catLabels = Object.keys(catMap).slice(0, 8);
-  const catValues = catLabels.map(k => catMap[k] / 100);
-  const catColors = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#C62828','#00838F','#4E342E','#F9A825'];
-  renderDoughnutChart('chartCategory', catLabels, catValues, catColors);
+  safeSection('chartCategory', function() {
+    const catLabels = Object.keys(catMap).slice(0, 8);
+    const catValues = catLabels.map(k => catMap[k] / 100);
+    const catColors = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#C62828','#00838F','#4E342E','#F9A825'];
+    renderDoughnutChart('chartCategory', catLabels, catValues, catColors);
+  });
 
   // Health score
   let score = 50;
@@ -1207,52 +1295,57 @@ function renderDashboard() {
     const savingsRate = (income - expense) / income;
     score = Math.round(Math.min(100, Math.max(0, savingsRate * 200 + 20)));
   }
-  const scoreEl = document.getElementById('healthScore');
-  scoreEl.innerHTML = `
-    <div class="score-circle" style="--score:${score}">
-      <div class="score-number">${score}</div>
-      <div class="score-label">de 100</div>
-    </div>
-    <div class="score-details">
-      <div class="score-detail-item"><span>Taxa de poupança</span><span>${income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0}%</span></div>
-      <div class="score-detail-item"><span>Receitas</span><span class="positive">${centsToReal(income)}</span></div>
-      <div class="score-detail-item"><span>Despesas</span><span class="negative">${centsToReal(expense)}</span></div>
-      <div class="score-detail-item"><span>Nº Transações</span><span>${txs.length}</span></div>
-      <div class="score-detail-item"><span>Contas ativas</span><span>${STATE.accounts.length}</span></div>
-    </div>
-  `;
+  safeSection('health', function() {
+    const scoreEl = document.getElementById('healthScore');
+    scoreEl.innerHTML = `
+      <div class="score-circle" style="--score:${score}">
+        <div class="score-number">${score}</div>
+        <div class="score-label">de 100</div>
+      </div>
+      <div class="score-details">
+        <div class="score-detail-item"><span>Taxa de poupança</span><span>${income > 0 ? ((income - expense) / income * 100).toFixed(1) : 0}%</span></div>
+        <div class="score-detail-item"><span>Receitas</span><span class="positive">${centsToReal(income)}</span></div>
+        <div class="score-detail-item"><span>Despesas</span><span class="negative">${centsToReal(expense)}</span></div>
+        <div class="score-detail-item"><span>Nº Transações</span><span>${txs.length}</span></div>
+        <div class="score-detail-item"><span>Contas ativas</span><span>${(STATE.accounts || []).length}</span></div>
+      </div>
+    `;
+  });
 
   // Alerts
-  const alerts = [];
-  if (expense > income) alerts.push({type:'danger', msg:'Despesas ultrapassaram receitas este mês!'});
-  if (score < 30) alerts.push({type:'warning', msg:'Score de saúde financeira abaixo de 30. Atenção!'});
+  safeSection('alerts', function() {
+    const alerts = [];
+    if (expense > income) alerts.push({type:'danger', msg:'Despesas ultrapassaram receitas este mês!'});
+    if (score < 30) alerts.push({type:'warning', msg:'Score de saúde financeira abaixo de 30. Atenção!'});
 
-  STATE.budgets.forEach(b => {
-    const spent = Math.abs(b.activity_cents || Math.round((b.activity || 0) * 100));
-    const limit = b.amount_cents || Math.round((b.amount || 0) * 100);
-    if (limit > 0 && spent > limit * 0.9) {
-      const catName = (STATE.categories.find(c => c.id === b.category_id) || {}).name || 'Categoria';
-      alerts.push({type: spent > limit ? 'danger' : 'warning', msg: `${catName}: ${(spent/limit*100).toFixed(0)}% do orçamento usado`});
-    }
-  });
-
-  // Card invoices due soon
-  Object.entries(STATE.invoices).forEach(([cardId, invs]) => {
-    const card = STATE.creditCards.find(c => c.id == cardId);
-    const upcoming = invs.find(i => i.status === 'open' || i.status === 'future');
-    if (upcoming && upcoming.due_date) {
-      const daysUntil = Math.ceil((new Date(upcoming.due_date) - new Date()) / 86400000);
-      if (daysUntil <= 7 && daysUntil >= 0) {
-        alerts.push({type:'info', msg:`Fatura ${card?.name || 'Cartão'} vence em ${daysUntil} dias: ${centsToReal(upcoming.amount_cents || Math.round((upcoming.amount||0)*100))}`});
+    (STATE.budgets || []).forEach(b => {
+      const spent = Math.abs(b.activity_cents || Math.round((b.activity || 0) * 100));
+      const limit = b.amount_cents || Math.round((b.amount || 0) * 100);
+      if (limit > 0 && spent > limit * 0.9) {
+        const catName = (STATE.categories.find(c => c.id === b.category_id) || {}).name || 'Categoria';
+        alerts.push({type: spent > limit ? 'danger' : 'warning', msg: `${catName}: ${(spent/limit*100).toFixed(0)}% do orçamento usado`});
       }
-    }
+    });
+
+    // Card invoices due soon - tolerate invs ser objeto ou ausente
+    Object.entries(STATE.invoices || {}).forEach(([cardId, invs]) => {
+      const list = Array.isArray(invs) ? invs : (invs && Array.isArray(invs.invoices) ? invs.invoices : []);
+      const card = (STATE.creditCards || []).find(c => c.id == cardId);
+      const upcoming = list.find(i => i.status === 'open' || i.status === 'future');
+      if (upcoming && upcoming.due_date) {
+        const daysUntil = Math.ceil((new Date(upcoming.due_date) - new Date()) / 86400000);
+        if (daysUntil <= 7 && daysUntil >= 0) {
+          alerts.push({type:'info', msg:`Fatura ${card?.name || 'Cartão'} vence em ${daysUntil} dias: ${centsToReal(upcoming.amount_cents || Math.round((upcoming.amount||0)*100))}`});
+        }
+      }
+    });
+
+    if (alerts.length === 0) alerts.push({type:'info', msg:'Nenhum alerta no momento. Tudo em ordem! 🎉'});
+
+    document.getElementById('alertsContainer').innerHTML = alerts.map(a =>
+      `<div class="alert alert-${a.type}"><span>${a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️'}</span> ${a.msg}</div>`
+    ).join('');
   });
-
-  if (alerts.length === 0) alerts.push({type:'info', msg:'Nenhum alerta no momento. Tudo em ordem! 🎉'});
-
-  document.getElementById('alertsContainer').innerHTML = alerts.map(a =>
-    `<div class="alert alert-${a.type}"><span>${a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️'}</span> ${a.msg}</div>`
-  ).join('');
 }
 
 // ═══════════════════════════════════════════════
