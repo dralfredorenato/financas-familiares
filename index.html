@@ -3357,8 +3357,11 @@ function getTotalsFromTxs(txs) {
 }
 
 function txsForExport() {
-  // Usa o resultado filtrado mais recente (mesmas linhas que o usuário está vendo).
-  return STATE.txLastFiltered.length ? STATE.txLastFiltered : getFilteredTransactions();
+  // Usa o resultado filtrado mais recente (mesmas linhas que o usuário está vendo)
+  // e aplica a mesma ordenação da tabela (STATE.txSort) para que PDF / impressão /
+  // WhatsApp respeitem a coluna e direção escolhidas no cabeçalho.
+  const base = STATE.txLastFiltered.length ? STATE.txLastFiltered : getFilteredTransactions();
+  return sortTxs(base);
 }
 
 function exportPDF() {
