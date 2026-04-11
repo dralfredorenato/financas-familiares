@@ -552,6 +552,42 @@ tr:hover td { background: var(--bg-card-alt); }
 .btn-secondary:hover { border-color: var(--green-500); }
 .btn-sm { padding: 8px 14px; font-size: 12px; }
 
+/* ─── EXPORT DROPDOWN MENU ─── */
+.export-menu-wrap { position: relative; display: inline-block; }
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 6px;
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+.export-menu.open { display: flex; }
+.export-menu button {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-menu button:hover { background: var(--bg-card-alt); }
+
 /* ─── PROGRESS BARS ─── */
 .progress-container { margin-bottom: 16px; }
 .progress-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
@@ -872,9 +908,16 @@ tr:hover td { background: var(--bg-card-alt); }
           <span class="card-title">🔍 Filtros</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" onclick="bulkCategorize()" title="Sugere categoria para todos os lançamentos filtrados usando IA local">🤖 Categorizar tudo</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Exportar como PDF">📄 PDF</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportPrint()" title="Imprimir">🖨️ Imprimir</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportWhatsApp()" title="Enviar via WhatsApp">💬 WhatsApp</button>
+            <div class="export-menu-wrap">
+              <button class="btn btn-secondary btn-sm" onclick="toggleExportMenu(event)" title="Exportar lançamentos filtrados" aria-haspopup="menu" aria-expanded="false" id="btnExportMenu">📤 Exportar ▾</button>
+              <div class="export-menu" id="exportMenu" role="menu" aria-labelledby="btnExportMenu">
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportPrint();">🖨️ Imprimir</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportPDF();">📄 PDF</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportCSV();">📊 CSV</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportXLS();">📈 XLS</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportWhatsApp();">💬 WhatsApp</button>
+              </div>
+            </div>
             <button class="btn btn-primary btn-sm" onclick="openModal('newTransaction')">➕ Novo</button>
           </div>
         </div>
@@ -1144,6 +1187,18 @@ tr:hover td { background: var(--bg-card-alt); }
             <button class="btn btn-primary" onclick="saveInvoicePayCategories()">💾 Salvar seleção</button>
             <button class="btn btn-secondary" onclick="autoDetectInvoicePayments()" title="Encontra pagamentos de fatura e transferências entre contas nas descrições dos lançamentos">🔍 Detectar automaticamente</button>
           </div>
+          <hr style="margin:18px 0;border:none;border-top:1px solid var(--border);" />
+          <p style="color: var(--text-secondary); margin-bottom: 8px; line-height:1.5; font-size:13px;">
+            <strong>🔄 Detecção automática de estornos</strong>
+          </p>
+          <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 10px; line-height:1.5;">
+            Quando uma operação é estornada pelo banco (saiu R$ X e voltou R$ X na mesma conta em até 5 dias, com descrição parecida ou contendo "estorno/cancel/reembolso/devolução"), o app marca o par como <em>🔄 ESTORNO</em> e ignora ambas as pernas nos totais. Desligue se estiver gerando falsos positivos.
+          </p>
+          <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:4px 2px;">
+            <input type="checkbox" id="reversalToggle" onchange="onReversalToggleChange(this.checked)" />
+            <span>Ignorar estornos automaticamente nos totais</span>
+          </label>
+          <div id="reversalStatus" style="font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 16px;"></div>
         </div>
       </div>
 
@@ -1507,6 +1562,8 @@ let STATE = {
   fixedBillsLoadedAt: null,
   reportMonths: 6,
   invoicePaymentCategoryIds: [], // categorias consideradas "pagamento de fatura" (excluídas dos totais)
+  reversalIds: new Set(), // IDs de transações detectadas como estorno (pares auto-cancelados)
+  detectReversalsEnabled: true, // toggle em Settings para ligar/desligar a detecção automática
 };
 const CHARTS = {};
 const MEMBER_TAGS = {
@@ -1576,7 +1633,16 @@ function saveInvoicePaymentSettings(ids) {
 function isInvoicePayment(tx) {
   if (!tx || !tx.category_id) return false;
   const ids = STATE.invoicePaymentCategoryIds || [];
-  return ids.indexOf(tx.category_id) !== -1;
+  if (!ids.length) return false;
+  // 1) Match direto pela categoria da transação
+  if (ids.indexOf(tx.category_id) !== -1) return true;
+  // 2) Match pelo parent_id — se o usuário marcou a categoria pai
+  // ("Cartão de Crédito", por exemplo), as subcategorias também contam.
+  // Esse caso é muito comum no Organizze e era a causa do "configurei
+  // mas continua errado nos totais".
+  const cat = (STATE.categories || []).find(function(c) { return c.id === tx.category_id; });
+  if (cat && cat.parent_id && ids.indexOf(cat.parent_id) !== -1) return true;
+  return false;
 }
 
 // Filtra transações removendo pagamentos de fatura. Usado por toda a
@@ -1586,6 +1652,169 @@ function excludeInvoicePayments(txs) {
   const ids = STATE.invoicePaymentCategoryIds || [];
   if (!ids.length) return txs;
   return txs.filter(function(t) { return !isInvoicePayment(t); });
+}
+
+// ─── Detecção automática de estornos ───────────────────────────────
+// Um "estorno" é um par de transações (débito, crédito) de mesmo valor
+// absoluto, na mesma conta/cartão, com datas próximas e descrições
+// compatíveis. Ocorrem quando o banco devolve uma cobrança contestada
+// ou quando uma compra no cartão é cancelada. Sem tratamento, ambos
+// lados entram nos totais inflando "Receitas" E "Despesas" do período.
+//
+// A detecção é heurística: só cancela o par quando há sinal forte de
+// estorno (descrição igual OU palavra-chave "estorno/cancel/reembolso/
+// devolução/refund/chargeback/contestação/ajuste"). Janela padrão de
+// 5 dias cobre mesmo dia até estornos de cartão que demoram cair.
+const REVERSAL_KEYWORDS_RE = /\b(?:estorno|canc(?:el)?|reembols|devolu|devolv|refund|charge\s*back|chargeback|contesta|ajuste)/i;
+const REVERSAL_MAX_DAYS = 5;
+const REVERSAL_LS_KEY = 'detectReversalsEnabled';
+
+function loadReversalSettings() {
+  try {
+    const raw = localStorage.getItem(REVERSAL_LS_KEY);
+    // Default: ligado (true). Só desliga se o usuário explicitamente salvou 'false'.
+    STATE.detectReversalsEnabled = raw === null ? true : raw === 'true';
+  } catch (_) {
+    STATE.detectReversalsEnabled = true;
+  }
+}
+
+function saveReversalSettings(enabled) {
+  STATE.detectReversalsEnabled = !!enabled;
+  try { localStorage.setItem(REVERSAL_LS_KEY, STATE.detectReversalsEnabled ? 'true' : 'false'); } catch (_) {}
+}
+
+// Normaliza descrição: minúsculas, sem acentos, sem pontuação, espaços
+// colapsados. Usada para comparar duas descrições "aproximadamente iguais".
+function normalizeDesc(s) {
+  if (!s) return '';
+  return String(s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Conta dias entre duas datas no formato YYYY-MM-DD (diferença absoluta).
+function dayDiff(d1, d2) {
+  if (!d1 || !d2) return Infinity;
+  const a = new Date(d1 + 'T00:00:00');
+  const b = new Date(d2 + 'T00:00:00');
+  if (isNaN(a) || isNaN(b)) return Infinity;
+  return Math.abs(Math.round((a - b) / 86400000));
+}
+
+// Chave de agrupamento: tipo+ID da fonte + valor absoluto. Dois lançamentos
+// só podem formar um par de estorno se tiverem a mesma chave. Prefixamos
+// com 'card:' / 'acc:' porque credit_card_id e account_id vêm de sequências
+// separadas no Organizze — sem o prefixo, um card.id=1 e um account.id=1
+// cairiam no mesmo grupo e poderiam ser cruzados como estorno indevidamente.
+function _reversalGroupKey(tx) {
+  let source;
+  if (tx.credit_card_id) source = 'card:' + tx.credit_card_id;
+  else if (tx.account_id) source = 'acc:' + tx.account_id;
+  else source = 'none:0';
+  const val = Math.abs(tx.amount_cents || Math.round((tx.amount || 0) * 100));
+  return source + '|' + val;
+}
+
+// Varre a lista de transações e retorna um Set com os IDs dos pares
+// identificados como estorno. Complexidade: O(n) para agrupar +
+// O(k²) dentro de cada grupo (normalmente k pequeno).
+function detectReversals(txs) {
+  const out = new Set();
+  if (!STATE.detectReversalsEnabled) return out;
+  if (!Array.isArray(txs) || txs.length < 2) return out;
+
+  // Agrupa por (conta, valor_absoluto) — já descarta 99% dos pares
+  // impossíveis sem precisar de um loop O(n²) global.
+  const groups = new Map();
+  for (const t of txs) {
+    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+    if (!val) continue; // ignora valor zero
+    const key = _reversalGroupKey(t);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+
+  const used = new Set();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    // Separa em positivos (crédito) e negativos (débito).
+    const pos = [];
+    const neg = [];
+    for (const t of group) {
+      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+      if (v > 0) pos.push(t); else neg.push(t);
+    }
+    if (!pos.length || !neg.length) continue;
+
+    // Para cada par (débito, crédito) no grupo, verifica se é estorno.
+    // Scoring: descrição idêntica vale mais que só palavra-chave. Isso
+    // evita que uma transação legítima "capture" o par errado quando
+    // existem várias com o mesmo valor no período.
+    for (const p of pos) {
+      if (used.has(p.id)) continue;
+      let bestMatch = null;
+      let bestScore = -1;
+      let bestDist = Infinity;
+      for (const n of neg) {
+        if (used.has(n.id)) continue;
+        const dist = dayDiff(p.date, n.date);
+        if (dist > REVERSAL_MAX_DAYS) continue;
+        // Descrições normalizadas idênticas ou uma contida na outra.
+        const np = normalizeDesc(p.description);
+        const nn = normalizeDesc(n.description);
+        const sameDesc = np && nn && (np === nn || np.indexOf(nn) !== -1 || nn.indexOf(np) !== -1);
+        // Alguma das descrições contém palavra-chave de estorno.
+        const kw = REVERSAL_KEYWORDS_RE.test(p.description || '') ||
+                   REVERSAL_KEYWORDS_RE.test(n.description || '');
+        if (!kw && !sameDesc) continue;
+        // Score: 2 = descrição bate, 1 = só keyword. Maior ganha;
+        // empate decide pela menor distância em dias.
+        const score = sameDesc ? 2 : 1;
+        if (score > bestScore || (score === bestScore && dist < bestDist)) {
+          bestScore = score;
+          bestDist = dist;
+          bestMatch = n;
+        }
+      }
+      if (bestMatch) {
+        out.add(p.id);
+        out.add(bestMatch.id);
+        used.add(p.id);
+        used.add(bestMatch.id);
+      }
+    }
+  }
+  return out;
+}
+
+// Recalcula STATE.reversalIds a partir de STATE.transactions. Deve ser
+// chamado sempre que a lista de transações é atualizada (applyFilters,
+// refreshData, loadAll, etc.).
+function recomputeReversalIds() {
+  STATE.reversalIds = detectReversals(STATE.transactions || []);
+}
+
+function isReversal(tx) {
+  return !!(tx && STATE.reversalIds && STATE.reversalIds.has(tx.id));
+}
+
+function excludeReversals(txs) {
+  if (!Array.isArray(txs)) return [];
+  if (!STATE.reversalIds || !STATE.reversalIds.size) return txs;
+  return txs.filter(function(t) { return !STATE.reversalIds.has(t.id); });
+}
+
+// Filtro centralizado: remove pagamentos de fatura E pares de estorno.
+// É o que deve ser usado em TODOS os cálculos de totais (KPIs, gráficos,
+// relatórios). As funções antigas (excludeInvoicePayments) continuam
+// existindo só por compatibilidade interna.
+function excludeNonCountable(txs) {
+  return excludeReversals(excludeInvoicePayments(txs));
 }
 
 // Heurística que reconhece descrições típicas de pagamento de fatura.
@@ -1744,6 +1973,7 @@ async function loadAll() {
   STATE.transactions = Array.isArray(results[2]) ? results[2] : [];
   STATE.creditCards = Array.isArray(results[3]) ? results[3] : [];
   STATE.budgets     = Array.isArray(results[4]) ? results[4] : [];
+  recomputeReversalIds();
   STATE.invoices = {};
   for (var i = 0; i < STATE.creditCards.length; i++) {
     var card = STATE.creditCards[i];
@@ -2522,6 +2752,7 @@ async function doLogout() {
   STATE.invoices = {};
   STATE.lastRefreshAt = null;
   STATE.selectedTxIds.clear();
+  STATE.reversalIds.clear();
   STATE.fixedBills = [];
   STATE.fixedBillsLoadedAt = null;
   // Nota: credenciais do Organizze são preservadas (mais conveniente).
@@ -2596,6 +2827,38 @@ function renderSettings() {
   var s = document.getElementById('orgConfigStatus');
   if (s && !s.innerHTML) s.textContent = '';
   renderInvoicePayCategoryList();
+  // Sincroniza o checkbox do toggle de estornos com o estado persistido
+  var revT = document.getElementById('reversalToggle');
+  if (revT) revT.checked = !!STATE.detectReversalsEnabled;
+  renderReversalStatus();
+}
+
+// ─── Settings: toggle de detecção de estornos ─────────────────────
+function onReversalToggleChange(enabled) {
+  saveReversalSettings(!!enabled);
+  recomputeReversalIds();
+  renderReversalStatus();
+  // Re-renderiza a página atual para refletir a mudança nos totais imediatamente.
+  if (STATE.currentPage === 'dashboard') renderDashboard();
+  if (STATE.currentPage === 'transactions') populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  if (STATE.currentPage === 'family') renderFamily();
+  if (STATE.currentPage === 'reports') renderReports();
+}
+
+function renderReversalStatus() {
+  const el = document.getElementById('reversalStatus');
+  if (!el) return;
+  if (!STATE.detectReversalsEnabled) {
+    el.innerHTML = '<span style="color:var(--text-muted);">Desligado — estornos entram normalmente nos totais.</span>';
+    return;
+  }
+  const n = STATE.reversalIds ? STATE.reversalIds.size : 0;
+  if (n === 0) {
+    el.innerHTML = '<span style="color:var(--text-muted);">Ligado — nenhum par de estorno detectado no período atual.</span>';
+  } else {
+    const pairs = n / 2;
+    el.innerHTML = '<span style="color:var(--green-600);">✅ Ligado — ' + pairs + ' par' + (pairs === 1 ? '' : 'es') + ' de estorno detectado' + (pairs === 1 ? '' : 's') + ' no período atual (' + n + ' lançamentos ignorados).</span>';
+  }
 }
 
 // ─── Settings: pagamento de fatura ─────────────────────────────────
@@ -2800,6 +3063,7 @@ function clearOrgConfig() {
   STATE.creditCards = [];
   STATE.budgets = [];
   STATE.invoices = {};
+  STATE.reversalIds.clear();
   document.getElementById('orgEmailInput').value = '';
   document.getElementById('orgTokenInput').value = '';
   document.getElementById('orgConfigStatus').innerHTML = '<span style="color: var(--text-secondary);">Credenciais removidas.</span>';
@@ -2891,9 +3155,10 @@ function safeSection(name, fn) {
 
 function renderDashboard() {
   const allTxs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
-  // Ignora pagamentos de fatura em todos os totais/gráficos para evitar
-  // contagem dupla (gasto no cartão + débito da fatura em conta).
-  const txs = excludeInvoicePayments(allTxs);
+  // Ignora pagamentos de fatura E estornos em todos os totais/gráficos para
+  // evitar contagem dupla (gasto no cartão + débito da fatura em conta) e
+  // inflação por pares original↔estorno (saída em um dia + retorno no próximo).
+  const txs = excludeNonCountable(allTxs);
   let income = 0, expense = 0;
   const catMap = {};
 
@@ -3072,6 +3337,7 @@ async function applyFilters() {
   STATE.txFilterRange = { start: start, end: end };
   try {
     STATE.transactions = await fetchTransactions(start, end);
+    recomputeReversalIds();
     const txs = getFilteredTransactions();
     STATE.txLastFiltered = txs;
     STATE.txPage = 1;
@@ -3182,9 +3448,9 @@ function renderTxCategoryChart(txs) {
   const listEl = document.getElementById('txCategoryChartList');
   if (!wrap || !canvas || !listEl) return;
 
-  // Só considera DESPESAS (valor < 0), ignorando pagamentos de fatura e
-  // transferências (excludeInvoicePayments já cuida disso).
-  const clean = excludeInvoicePayments(Array.isArray(txs) ? txs : []);
+  // Só considera DESPESAS (valor < 0), ignorando pagamentos de fatura,
+  // transferências e pares de estorno (excludeNonCountable cuida de tudo).
+  const clean = excludeNonCountable(Array.isArray(txs) ? txs : []);
   const catMap = {};
   clean.forEach(function(t) {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -3264,16 +3530,20 @@ function populateTxTable(txs) {
   // Atualiza a barra de resumo (totais já ignoram pagamentos de fatura)
   updateTxSummaryBar(sorted);
 
-  // Contabiliza pagamentos de fatura excluídos (para mostrar no rodapé)
-  let excludedCount = 0;
-  let excludedCents = 0;
+  // Contabiliza transações ignoradas (fatura + estorno) para o rodapé.
+  let invoiceCount = 0, invoiceCents = 0;
+  let reversalCount = 0, reversalCents = 0;
   page.forEach(function(t) {
-    if (isInvoicePayment(t)) {
-      excludedCount++;
-      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
-      excludedCents += Math.abs(v);
+    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+    if (isReversal(t)) {
+      reversalCount++;
+      reversalCents += Math.abs(v);
+    } else if (isInvoicePayment(t)) {
+      invoiceCount++;
+      invoiceCents += Math.abs(v);
     }
   });
+  const excludedCount = invoiceCount + reversalCount;
 
   if (page.length === 0) {
     body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
@@ -3289,19 +3559,26 @@ function populateTxTable(txs) {
       const notesCell = notes
         ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
-      const isExcluded = isInvoicePayment(t);
+      const isInvoice = isInvoicePayment(t);
+      const isRev = isReversal(t);
+      const isExcluded = isInvoice || isRev;
       const rowStyle = isExcluded ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
-      // Escolhe ícone/label do selo a partir do nome da categoria: fatura → 💳,
-      // transferência → 🔁, qualquer outra categoria excluída → 🚫.
+      // Escolhe ícone/label do selo: estorno → 🔄 ESTORNO, fatura → 💳 FATURA,
+      // transferência → 🔁 TRANSF, qualquer outra categoria excluída → 🚫.
       let badgeHtml = '';
-      if (isExcluded) {
+      if (isRev) {
+        badgeHtml = '<span class="invoice-badge" title="ESTORNO — par auto-cancelado, não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFE0B2;color:#E65100;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🔄 ESTORNO</span>';
+      } else if (isInvoice) {
         const catLow = (cat || '').toLowerCase();
         let emoji = '🚫', label = 'NÃO CONTA';
         if (catLow.indexOf('fatura') !== -1 || catLow.indexOf('cart') !== -1) { emoji = '💳'; label = 'FATURA'; }
         else if (catLow.indexOf('transfer') !== -1 || catLow.indexOf('transf') !== -1) { emoji = '🔁'; label = 'TRANSF'; }
         badgeHtml = '<span class="invoice-badge" title="' + label + ' — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">' + emoji + ' ' + label + '</span>';
       }
-      return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${isExcluded ? 'Não conta nos totais — categoria excluída via Settings' : 'Clique para editar'}">
+      const rowTitle = isRev ? 'Estorno detectado — não conta nos totais'
+        : (isInvoice ? 'Não conta nos totais — categoria excluída via Settings'
+        : 'Clique para editar');
+      return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${rowTitle}">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
         <td>${escHtml(t.description) || '—'}${badgeHtml}</td>
@@ -3317,15 +3594,22 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Exibe o total de lançamentos + (se houver) o total excluído por fatura.
+  // Exibe o total de lançamentos + (se houver) o total excluído por fatura/estorno.
   const pag = document.getElementById('txPagination');
   if (pag) {
     if (!sorted.length) {
       pag.innerHTML = '';
     } else {
       let html = '<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ' + sorted.length + ' transações do período';
-      if (excludedCount > 0) {
-        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' dos totais (fatura/transferência — ' + centsToReal(excludedCents) + ')</span>';
+      const parts = [];
+      if (invoiceCount > 0) {
+        parts.push(invoiceCount + ' fatura/transferência (' + centsToReal(invoiceCents) + ')');
+      }
+      if (reversalCount > 0) {
+        parts.push(reversalCount + ' estorno' + (reversalCount === 1 ? '' : 's') + ' (' + centsToReal(reversalCents) + ')');
+      }
+      if (parts.length) {
+        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' dos totais — ' + parts.join(' + ') + '</span>';
       }
       html += '</div>';
       pag.innerHTML = html;
@@ -3343,10 +3627,10 @@ function getPeriodLabel() {
 }
 
 function getTotalsFromTxs(txs) {
-  // Totais SEMPRE ignoram pagamentos de fatura (para não contar em dobro).
-  // A lista exibida continua com todas as transações — só os números
-  // agregados é que são limpos.
-  const clean = excludeInvoicePayments(txs);
+  // Totais SEMPRE ignoram pagamentos de fatura e pares de estorno (para não
+  // contar em dobro). A lista exibida continua com todas as transações —
+  // só os números agregados é que são limpos.
+  const clean = excludeNonCountable(txs);
   let income = 0, expense = 0;
   clean.forEach(t => {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -3559,6 +3843,139 @@ function exportWhatsApp() {
     alert('Erro ao preparar WhatsApp: ' + (e.message || 'desconhecido'));
   }
 }
+
+// ─── Helpers para CSV / XLS ─────────────────────
+// Escapa um valor para CSV seguindo RFC 4180: envolve em aspas se contém
+// vírgula, ponto-e-vírgula, aspas ou quebra de linha; duplica aspas internas.
+// Também neutraliza CSV injection: se uma célula começa com =, +, -, @,
+// TAB ou CR, o Excel/LibreOffice pode interpretar como fórmula ao abrir
+// (ex.: "=HYPERLINK(...)" exfiltrando dados). Prefixamos com apóstrofo
+// para forçar interpretação como texto puro.
+function csvEscape(v) {
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/[",;\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+// Gera um array de linhas [header, ...rows] a partir das transações já
+// filtradas e ordenadas — compartilhado por exportCSV e exportXLS.
+function buildExportRows(txs) {
+  const header = ['Data', 'Descrição', 'Categoria', 'Conta/Cartão', 'Observações', 'Valor (R$)'];
+  const rows = txs.map(t => {
+    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+    const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '';
+    const src = getTxSource(t);
+    // Valor em formato brasileiro (vírgula decimal), negativo preservado.
+    const reais = (val / 100).toFixed(2).replace('.', ',');
+    return [
+      fmtDate(t.date),
+      t.description || '',
+      cat,
+      src.label || '',
+      t.notes || '',
+      reais
+    ];
+  });
+  return { header, rows };
+}
+
+// Baixa um Blob com o nome dado (usa URL.createObjectURL + link temporário).
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportCSV() {
+  try {
+    const txs = txsForExport();
+    const { header, rows } = buildExportRows(txs);
+    // Usamos ; como separador — padrão do Excel pt-BR, evita conflito com a
+    // vírgula decimal brasileira. BOM UTF-8 garante acentos corretos no Excel.
+    const sep = ';';
+    const lines = [header.map(csvEscape).join(sep)];
+    rows.forEach(r => lines.push(r.map(csvEscape).join(sep)));
+    const csv = '\uFEFF' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    downloadBlob(blob, 'lancamentos-' + today() + '.csv');
+  } catch (e) {
+    showError('exportCSV', e);
+    alert('Erro ao gerar CSV: ' + (e.message || 'desconhecido'));
+  }
+}
+
+function exportXLS() {
+  try {
+    const txs = txsForExport();
+    const { header, rows } = buildExportRows(txs);
+    const period = getPeriodLabel();
+    const totals = getTotalsFromTxs(txs);
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    // Gera um "XLS" via HTML table com namespace Excel — o Excel abre e
+    // preserva fórmulas básicas, sem precisar de lib externa (SheetJS etc.).
+    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    html += '<head><meta charset="UTF-8">';
+    html += '<xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>';
+    html += '<x:Name>Lancamentos</x:Name>';
+    html += '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>';
+    html += '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>';
+    html += '<style>td,th{mso-number-format:"\\@";font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;} td.num{mso-number-format:"#,##0.00";text-align:right;}</style>';
+    html += '</head><body>';
+    html += '<table border="1">';
+    html += '<tr><td colspan="6"><b>Família Metzger - Lançamentos</b></td></tr>';
+    html += '<tr><td colspan="6">Período: ' + esc(period) + '</td></tr>';
+    html += '<tr><td colspan="6">Receitas: ' + esc(centsToReal(totals.income)) + ' · Despesas: ' + esc(centsToReal(totals.expense)) + ' · Saldo: ' + esc(centsToReal(totals.net)) + '</td></tr>';
+    html += '<tr></tr>';
+    html += '<tr>' + header.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach(r => {
+      html += '<tr>';
+      // Colunas de texto
+      for (let i = 0; i < 5; i++) html += '<td>' + esc(r[i]) + '</td>';
+      // Coluna de valor como número real (Excel calcula). Converte vírgula → ponto.
+      const numeric = String(r[5]).replace(/\./g, '').replace(',', '.');
+      html += '<td class="num">' + esc(numeric) + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></body></html>';
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    downloadBlob(blob, 'lancamentos-' + today() + '.xls');
+  } catch (e) {
+    showError('exportXLS', e);
+    alert('Erro ao gerar XLS: ' + (e.message || 'desconhecido'));
+  }
+}
+
+// ─── Dropdown do botão "Exportar" ────────────────
+function toggleExportMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('btnExportMenu');
+  if (!menu || !btn) return;
+  const isOpen = menu.classList.toggle('open');
+  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+function closeExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('btnExportMenu');
+  if (menu) menu.classList.remove('open');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+// Fecha o menu ao clicar fora dele ou apertar Esc
+document.addEventListener('click', function(e) {
+  const wrap = e.target.closest && e.target.closest('.export-menu-wrap');
+  if (!wrap) closeExportMenu();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeExportMenu();
+});
 
 // ═══════════════════════════════════════════════
 //  CATEGORIZAÇÃO AUTOMÁTICA (heurística local)
@@ -4784,7 +5201,7 @@ function renderCards() {
 //  FAMILY
 // ═══════════════════════════════════════════════
 function renderFamily() {
-  const txs = excludeInvoicePayments(STATE.transactions);
+  const txs = excludeNonCountable(STATE.transactions);
   const members = {alfredo: 0, esposa: 0, familia: 0};
   txs.forEach(t => {
     const val = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -4869,7 +5286,11 @@ async function renderReports() {
     const end = monthEnd(d);
     const label = d.toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
     try {
-      const txs = excludeInvoicePayments(await fetchTransactions(start, end));
+      const raw = await fetchTransactions(start, end);
+      // Detecta estornos localmente (mês histórico, fora do STATE atual)
+      const monthReversals = detectReversals(raw);
+      const afterInvoice = excludeInvoicePayments(raw);
+      const txs = afterInvoice.filter(function(t) { return !monthReversals.has(t.id); });
       let income = 0, expense = 0;
       txs.forEach(t => {
         const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -5040,6 +5461,7 @@ if (fcC) fcC.addEventListener('keydown', function(ev){
 
 loadTheme();
 loadInvoicePaymentSettings();
+loadReversalSettings();
 checkSavedLogin();
 </script>
 </body>
