@@ -790,7 +790,9 @@ tr:hover td { background: var(--bg-card-alt); }
         <button class="btn-hamburger" onclick="toggleSidebar()">☰</button>
         <h1 id="pageTitle">📊 Dashboard</h1>
       </div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="display:flex;align-items:center;gap:10px;">
+        <span id="lastRefreshLabel" style="font-size:12px;color:var(--text-muted);" title="Última sincronização com o Organizze"></span>
+        <button class="btn-theme" id="btnRefresh" onclick="refreshNow()" title="Atualizar lançamentos agora">🔄</button>
         <button class="btn-theme" id="btnTheme" onclick="toggleTheme()">🌙</button>
       </div>
     </div>
@@ -861,7 +863,7 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
         <div class="table-container">
           <table>
-            <thead><tr><th style="width:34px;"><input type="checkbox" id="selectAllTxs" onchange="toggleSelectAll(this.checked)" title="Selecionar todos visíveis" /></th><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
+            <thead><tr><th style="width:34px;"><input type="checkbox" id="selectAllTxs" onchange="toggleSelectAll(this.checked)" title="Selecionar todos visíveis" /></th><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta/Cartão</th><th>Valor</th></tr></thead>
             <tbody id="transactionsBody"></tbody>
           </table>
         </div>
@@ -1151,6 +1153,8 @@ let STATE = {
   txPerPage: 25,
   txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
+  lastRefreshAt: null, // timestamp da última atualização bem-sucedida
+  autoRefreshTimer: null, // handle do setInterval
   reportMonths: 6,
 };
 const CHARTS = {};
@@ -1283,6 +1287,95 @@ async function loadAll() {
       STATE.invoices[card.id] = await api('credit_cards/' + card.id + '/invoices');
     } catch (e) { console.warn('invoices ' + card.id, e); }
   }
+  STATE.lastRefreshAt = Date.now();
+  updateRefreshLabel();
+}
+
+// ═══════════════════════════════════════════════
+//  AUTO-REFRESH (polling automático + botão manual)
+// ═══════════════════════════════════════════════
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+
+function updateRefreshLabel() {
+  var el = document.getElementById('lastRefreshLabel');
+  if (!el) return;
+  if (!STATE.lastRefreshAt) {
+    el.textContent = '';
+    return;
+  }
+  var diff = Math.floor((Date.now() - STATE.lastRefreshAt) / 1000);
+  var txt;
+  if (diff < 5) txt = '✓ Atualizado agora';
+  else if (diff < 60) txt = '✓ Há ' + diff + 's';
+  else if (diff < 3600) txt = '✓ Há ' + Math.floor(diff / 60) + ' min';
+  else txt = '✓ Há ' + Math.floor(diff / 3600) + 'h';
+  el.textContent = txt;
+}
+
+// Atualiza o rótulo "Atualizado há X" uma vez por minuto (sem rede).
+setInterval(updateRefreshLabel, 30 * 1000);
+
+function isAnyModalOpen() {
+  // Evita atropelar o usuário durante edição
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'forceChangeOverlay'];
+  for (var i = 0; i < candidates.length; i++) {
+    var el = document.getElementById(candidates[i]);
+    if (!el) continue;
+    if (el.classList && el.classList.contains('active')) return true;
+    if (el.style && el.style.display && el.style.display !== 'none') return true;
+  }
+  return false;
+}
+
+// Refaz loadAll silenciosamente e atualiza a página atual
+async function refreshData(opts) {
+  opts = opts || {};
+  var silent = !!opts.silent;
+  // Verifica se está autenticado / com credenciais do Organizze
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) return;
+  // Não atrapalha o usuário se houver modal aberto
+  if (!opts.force && isAnyModalOpen()) return;
+
+  var btn = document.getElementById('btnRefresh');
+  if (btn && !silent) btn.disabled = true;
+  try {
+    await loadAll();
+    // Re-renderiza a página atual sem perder STATE de seleção ou filtros
+    var page = STATE.currentPage || 'dashboard';
+    if (page === 'transactions') {
+      // Re-aplica os filtros atuais sobre o STATE.transactions atualizado
+      var filtered = getFilteredTransactions();
+      STATE.txLastFiltered = filtered;
+      populateTxTable(filtered);
+    } else {
+      renderPage(page);
+    }
+    updateRefreshLabel();
+  } catch (e) {
+    showError('refreshData', e);
+  } finally {
+    if (btn && !silent) btn.disabled = false;
+  }
+}
+
+// Botão manual "🔄"
+async function refreshNow() {
+  await refreshData({ force: true });
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  STATE.autoRefreshTimer = setInterval(function() {
+    refreshData({ silent: true });
+  }, AUTO_REFRESH_INTERVAL_MS);
+}
+
+function stopAutoRefresh() {
+  if (STATE.autoRefreshTimer) {
+    clearInterval(STATE.autoRefreshTimer);
+    STATE.autoRefreshTimer = null;
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -1402,6 +1495,8 @@ async function continueAfterLogin() {
       if (ds) ds.innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><div>Falha ao renderizar dashboard. Veja o banner vermelho no topo.</div></div>';
     } catch (_) {}
   }
+  // Inicia o polling automático de 5 em 5 minutos
+  startAutoRefresh();
 }
 
 // ═══════════════════════════════════════════════
@@ -1598,6 +1693,7 @@ async function submitChangePassword() {
 
 async function doLogout() {
   try { if (SB) await SB.auth.signOut(); } catch (e) { console.warn('signOut error', e); }
+  stopAutoRefresh();
   APP.email = '';
   APP.__user = null;
   STATE.accounts = [];
@@ -1606,6 +1702,8 @@ async function doLogout() {
   STATE.creditCards = [];
   STATE.budgets = [];
   STATE.invoices = {};
+  STATE.lastRefreshAt = null;
+  STATE.selectedTxIds.clear();
   // Nota: credenciais do Organizze são preservadas (mais conveniente).
   // Use "Limpar credenciais" em Configurações para removê-las.
   document.getElementById('app').classList.remove('active');
@@ -1613,6 +1711,7 @@ async function doLogout() {
   var pwd = document.getElementById('loginPassword');
   if (pwd) pwd.value = '';
   setLoginStatus('');
+  updateRefreshLabel();
 }
 
 async function checkSavedLogin() {
@@ -1659,6 +1758,8 @@ async function checkSavedLogin() {
   }
   try { await loadAll(); } catch (e) { showError('checkSavedLogin:loadAll', e); }
   try { renderPage('dashboard'); } catch (e) { showError('checkSavedLogin:renderDashboard', e); }
+  // Inicia o polling automático após auto-login
+  startAutoRefresh();
 }
 
 // ═══════════════════════════════════════════════
@@ -1933,6 +2034,29 @@ function renderTransactions() {
   populateTxTable(STATE.txLastFiltered);
 }
 
+// Retorna { label, icon, type } identificando a conta ou cartão
+// de onde o lançamento saiu. O Organizze pode armazenar o ID da
+// fonte em credit_card_id (fatura) ou em account_id (pode ser
+// conta bancária OU conta-cartão). Resolvemos procurando em
+// STATE.accounts primeiro, depois em STATE.creditCards.
+function getTxSource(tx) {
+  if (!tx) return { label: '—', icon: '', type: 'unknown' };
+  // 1. Tenta credit_card_id explícito (transação de fatura)
+  if (tx.credit_card_id) {
+    const cc = (STATE.creditCards || []).find(c => c.id === tx.credit_card_id);
+    if (cc) return { label: cc.name, icon: '💳', type: 'card' };
+  }
+  // 2. account_id → tenta accounts bancárias primeiro
+  if (tx.account_id) {
+    const acc = (STATE.accounts || []).find(a => a.id === tx.account_id);
+    if (acc) return { label: acc.name, icon: '🏦', type: 'account' };
+    // 3. Fallback: account_id pode apontar para um cartão
+    const cc2 = (STATE.creditCards || []).find(c => c.id === tx.account_id);
+    if (cc2) return { label: cc2.name, icon: '💳', type: 'card' };
+  }
+  return { label: '—', icon: '', type: 'unknown' };
+}
+
 // Retorna a lista de transações aplicando os filtros da UI sem re-fetch.
 function getFilteredTransactions() {
   let txs = [...(STATE.transactions || [])];
@@ -1978,17 +2102,19 @@ function populateTxTable(txs) {
   const body = document.getElementById('transactionsBody');
 
   if (page.length === 0) {
-    body.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
   } else {
     body.innerHTML = page.map(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
+      const src = getTxSource(t);
       const checked = STATE.selectedTxIds.has(t.id) ? 'checked' : '';
       return `<tr style="cursor:pointer;" onclick="openEditTx(${t.id})" title="Clique para editar">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
         <td>${t.description || '—'}</td>
         <td>${cat}</td>
+        <td style="font-size:13px;white-space:nowrap;"><span style="opacity:0.8;">${src.icon}</span> ${src.label}</td>
         <td style="font-family:'Space Mono',monospace;font-weight:600;color:${val >= 0 ? 'var(--green-600)' : 'var(--red)'}">${centsToReal(val)}</td>
       </tr>`;
     }).join('');
@@ -2082,16 +2208,18 @@ function exportPDF() {
     const rows = txs.map(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '-';
+      const src = getTxSource(t);
       return [
         fmtDate(t.date),
-        (t.description || '-').substring(0, 60),
-        cat.substring(0, 24),
+        (t.description || '-').substring(0, 50),
+        cat.substring(0, 20),
+        src.label.substring(0, 20),
         centsToReal(val).replace('R$', 'R$ ')
       ];
     });
 
     doc.autoTable({
-      head: [['Data', 'Descricao', 'Categoria', 'Valor']],
+      head: [['Data', 'Descricao', 'Categoria', 'Conta/Cartao', 'Valor']],
       body: rows,
       startY: 55,
       theme: 'striped',
@@ -2099,13 +2227,14 @@ function exportPDF() {
       bodyStyles: { fontSize: 8, textColor: 40 },
       alternateRowStyles: { fillColor: [240, 247, 240] },
       columnStyles: {
-        0: { cellWidth: 22 },
+        0: { cellWidth: 20 },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 36 },
-        3: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
+        2: { cellWidth: 30 },
+        3: { cellWidth: 28 },
+        4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && data.column.index === 3) {
+        if (data.section === 'body' && data.column.index === 4) {
           const raw = data.cell.raw;
           if (typeof raw === 'string' && raw.indexOf('-') !== -1) {
             data.cell.styles.textColor = [198, 40, 40];
@@ -2167,14 +2296,16 @@ function exportPrint() {
     html += '<span>💸 <strong>Despesas:</strong> <span class="neg">' + centsToReal(totals.expense) + '</span></span>';
     html += '<span>📊 <strong>Saldo:</strong> <span class="' + (totals.net >= 0 ? 'pos' : 'neg') + '">' + centsToReal(totals.net) + '</span></span>';
     html += '</div>';
-    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="right">Valor</th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta/Cartão</th><th class="right">Valor</th></tr></thead><tbody>';
     txs.forEach(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
+      const src = getTxSource(t);
       html += '<tr>';
       html += '<td>' + esc(fmtDate(t.date)) + '</td>';
       html += '<td>' + esc(t.description || '—') + '</td>';
       html += '<td>' + esc(cat) + '</td>';
+      html += '<td>' + src.icon + ' ' + esc(src.label) + '</td>';
       html += '<td class="right ' + (val >= 0 ? 'pos' : 'neg') + '">' + centsToReal(val) + '</td>';
       html += '</tr>';
     });
