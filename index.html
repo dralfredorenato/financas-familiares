@@ -950,43 +950,131 @@ function memberTagHTML(m) {
 
 async function api(endpoint, options) {
   if (!options) options = {};
-  var url = '/api/proxy?endpoint=' + encodeURIComponent(endpoint);
-  var opts = { method: options.method || 'GET', headers: { 'Content-Type': 'application/json', 'X-Organizze-Email': APP.email, 'X-Organizze-Token': APP.token } };
-  if (options.body) opts.body = JSON.stringify(options.body);
+  // Normaliza: remove barras iniciais para não virar "rest/v2//transactions"
+  var clean = String(endpoint).replace(/^\/+/, '');
+  var url = '/api/proxy?endpoint=' + encodeURIComponent(clean);
+  var opts = {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Organizze-Email': APP.email,
+      'X-Organizze-Token': APP.token
+    }
+  };
+  if (options.body !== undefined && options.body !== null) {
+    // Aceita objeto ou string; não faz dupla serialização.
+    opts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
   var r = await fetch(url, opts);
-  if (!r.ok) throw new Error('API erro: ' + r.status);
-  return r.json();
+  var text = await r.text();
+  var data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (_) { data = text; }
+  }
+  if (!r.ok) {
+    var reason = '';
+    if (data && typeof data === 'object') {
+      reason = data.error || data.message || data.errors || '';
+      if (typeof reason === 'object') reason = JSON.stringify(reason);
+    } else if (typeof data === 'string') {
+      reason = data;
+    }
+    var err = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
 }
 
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
+async function loadAll() {
+  var start = monthStart();
+  var end = monthEnd();
+  var results = await Promise.all([
+    api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
+    api('categories').catch(function(e){ console.warn('categories', e); return []; }),
+    api('transactions?start_date=' + start + '&end_date=' + end).catch(function(e){ console.warn('transactions', e); return []; }),
+    api('credit_cards').catch(function(e){ console.warn('credit_cards', e); return []; }),
+    api('budgets').catch(function(e){ console.warn('budgets', e); return []; })
+  ]);
+  STATE.accounts    = Array.isArray(results[0]) ? results[0] : [];
+  STATE.categories  = Array.isArray(results[1]) ? results[1] : [];
+  STATE.transactions = Array.isArray(results[2]) ? results[2] : [];
+  STATE.creditCards = Array.isArray(results[3]) ? results[3] : [];
+  STATE.budgets     = Array.isArray(results[4]) ? results[4] : [];
+  STATE.invoices = {};
+  for (var i = 0; i < STATE.creditCards.length; i++) {
+    var card = STATE.creditCards[i];
+    try {
+      STATE.invoices[card.id] = await api('credit_cards/' + card.id + '/invoices');
+    } catch (e) { console.warn('invoices ' + card.id, e); }
+  }
+}
+
 async function doLogin() {
   var email = document.getElementById('loginEmail').value.trim();
   var token = document.getElementById('loginToken').value.trim();
+  var btn = document.getElementById('btnLogin');
   if (!email || !token) { setLoginStatus('Preencha e-mail e token.'); return; }
-  setLoginStatus('Conectando...');
+  setLoginStatus('Conectando ao Organizze...');
+  if (btn) btn.disabled = true;
   APP.email = email; APP.token = token;
   try {
     var accounts = await api('accounts');
-    if (!Array.isArray(accounts)) throw new Error('Resposta inválida');
-    APP.accounts = accounts;
-    localStorage.setItem('org_email', email); localStorage.setItem('org_token', token);
+    if (!Array.isArray(accounts)) throw new Error('Resposta inválida do servidor');
+    STATE.accounts = accounts;
+    localStorage.setItem('org_email', email);
+    localStorage.setItem('org_token', token);
+    setLoginStatus('Carregando dados...');
+    await loadAll();
     document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = '';
+    document.getElementById('app').classList.add('active');
     renderPage('dashboard');
-  } catch (e) { console.error('[AUTH] Falha:', e); setLoginStatus('Falha na autenticação. Verifique e-mail e token.'); }
+    setLoginStatus('');
+  } catch (e) {
+    console.error('[AUTH] Falha:', e);
+    var msg;
+    if (e && e.status === 401) {
+      msg = 'Credenciais inválidas. Confira e-mail e token.';
+    } else if (e && e.status === 403) {
+      msg = 'Acesso negado (403). Verifique permissões do token.';
+    } else if (e && e.status) {
+      msg = 'Falha (' + e.status + '): ' + (e.message || 'erro desconhecido');
+    } else {
+      msg = 'Falha de rede: ' + (e && e.message ? e.message : 'erro desconhecido');
+    }
+    setLoginStatus(msg);
+    APP.email = ''; APP.token = '';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function doLogout() {
-  APP.email = ''; APP.token = ''; APP.accounts = [];
-  localStorage.removeItem('org_email'); localStorage.removeItem('org_token');
+  APP.email = ''; APP.token = '';
+  STATE.accounts = [];
+  STATE.categories = [];
+  STATE.transactions = [];
+  STATE.creditCards = [];
+  STATE.budgets = [];
+  STATE.invoices = {};
+  localStorage.removeItem('org_email');
+  localStorage.removeItem('org_token');
+  document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display = '';
-  document.getElementById('appScreen').style.display = 'none';
+  setLoginStatus('');
 }
 
-function checkSavedLogin() {
-  var e = localStorage.getItem('org_email'), t = localStorage.getItem('org_token');
-  if (e && t) { document.getElementById('loginEmail').value = e; document.getElementById('loginToken').value = t; }
+async function checkSavedLogin() {
+  var e = localStorage.getItem('org_email');
+  var t = localStorage.getItem('org_token');
+  if (e && t) {
+    document.getElementById('loginEmail').value = e;
+    document.getElementById('loginToken').value = t;
+    await doLogin();
+  }
 }
 
 async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
@@ -1279,9 +1367,9 @@ async function saveTransaction() {
   btn.textContent = 'Salvando...';
 
   try {
-    await api('/transactions', {
+    await api('transactions', {
       method: 'POST',
-      body: JSON.stringify(payload)
+      body: payload
     });
     closeModal();
     await applyFilters();
