@@ -1325,6 +1325,15 @@ tr:hover td { background: var(--bg-card-alt); }
         <textarea id="editTxNotes" rows="3" placeholder="Notas adicionais sobre este lançamento..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;resize:vertical;min-height:70px;"></textarea>
       </div>
     </div>
+    <div style="margin:12px 0 4px;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px;">
+      <label style="display:flex;align-items:flex-start;gap:10px;font-size:14px;cursor:pointer;color:var(--text);">
+        <input type="checkbox" id="editTxExcluded" style="margin-top:3px;flex-shrink:0;" />
+        <span>
+          🚫 <strong>Excluir este lançamento do cálculo geral</strong><br>
+          <span style="font-size:12px;color:var(--text-muted);">O valor continua aparecendo na lista (riscado), mas não entra em Receitas nem em Despesas no Dashboard, gráficos, relatórios e exportações. Marcação salva localmente neste dispositivo.</span>
+        </span>
+      </label>
+    </div>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveEditTx" onclick="saveEditTransaction()">💾 Salvar</button>
@@ -1564,6 +1573,7 @@ let STATE = {
   invoicePaymentCategoryIds: [], // categorias consideradas "pagamento de fatura" (excluídas dos totais)
   reversalIds: new Set(), // IDs de transações detectadas como estorno (pares auto-cancelados)
   detectReversalsEnabled: true, // toggle em Settings para ligar/desligar a detecção automática
+  manuallyExcludedTxIds: new Set(), // IDs de lançamentos manualmente excluídos do cálculo geral (localStorage)
 };
 const CHARTS = {};
 const MEMBER_TAGS = {
@@ -1814,7 +1824,51 @@ function excludeReversals(txs) {
 // relatórios). As funções antigas (excludeInvoicePayments) continuam
 // existindo só por compatibilidade interna.
 function excludeNonCountable(txs) {
-  return excludeReversals(excludeInvoicePayments(txs));
+  return excludeManuallyExcluded(excludeReversals(excludeInvoicePayments(txs)));
+}
+
+// ─── Exclusão manual por lançamento ────────────────────────────────
+// Permite ao usuário marcar, via checkbox no modal de edição, qualquer
+// lançamento como "não contar nos totais". Útil para casos que nem a
+// detecção de fatura nem a de estorno pegam (PIX devolvido manualmente
+// por amigo, venda pessoal, reembolso por fora, etc.). Os IDs são
+// persistidos em localStorage — portanto ficam por dispositivo (não
+// sincronizam entre navegadores/computadores).
+const MANUAL_EXCLUDE_LS_KEY = 'manuallyExcludedTxIds';
+
+function loadManuallyExcludedIds() {
+  try {
+    const raw = localStorage.getItem(MANUAL_EXCLUDE_LS_KEY);
+    if (!raw) { STATE.manuallyExcludedTxIds = new Set(); return; }
+    const arr = JSON.parse(raw);
+    STATE.manuallyExcludedTxIds = new Set(
+      Array.isArray(arr) ? arr.map(function(x) { return parseInt(x, 10); }).filter(function(x) { return !isNaN(x); }) : []
+    );
+  } catch (_) {
+    STATE.manuallyExcludedTxIds = new Set();
+  }
+}
+
+function saveManuallyExcludedIds() {
+  try {
+    localStorage.setItem(MANUAL_EXCLUDE_LS_KEY, JSON.stringify(Array.from(STATE.manuallyExcludedTxIds)));
+  } catch (_) {}
+}
+
+function isManuallyExcluded(tx) {
+  return !!(tx && STATE.manuallyExcludedTxIds && STATE.manuallyExcludedTxIds.has(tx.id));
+}
+
+function setTxManuallyExcluded(txId, excluded) {
+  if (excluded) STATE.manuallyExcludedTxIds.add(txId);
+  else STATE.manuallyExcludedTxIds.delete(txId);
+  saveManuallyExcludedIds();
+}
+
+function excludeManuallyExcluded(txs) {
+  if (!Array.isArray(txs)) return [];
+  if (!STATE.manuallyExcludedTxIds || !STATE.manuallyExcludedTxIds.size) return txs;
+  return txs.filter(function(t) { return !STATE.manuallyExcludedTxIds.has(t.id); });
 }
 
 // Heurística que reconhece descrições típicas de pagamento de fatura.
@@ -3530,12 +3584,17 @@ function populateTxTable(txs) {
   // Atualiza a barra de resumo (totais já ignoram pagamentos de fatura)
   updateTxSummaryBar(sorted);
 
-  // Contabiliza transações ignoradas (fatura + estorno) para o rodapé.
+  // Contabiliza transações ignoradas (manual + fatura + estorno) para o rodapé.
+  // Ordem de prioridade: manual > estorno > fatura (mesma ordem do selo).
+  let manualCount = 0, manualCents = 0;
   let invoiceCount = 0, invoiceCents = 0;
   let reversalCount = 0, reversalCents = 0;
   page.forEach(function(t) {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
-    if (isReversal(t)) {
+    if (isManuallyExcluded(t)) {
+      manualCount++;
+      manualCents += Math.abs(v);
+    } else if (isReversal(t)) {
       reversalCount++;
       reversalCents += Math.abs(v);
     } else if (isInvoicePayment(t)) {
@@ -3543,7 +3602,7 @@ function populateTxTable(txs) {
       invoiceCents += Math.abs(v);
     }
   });
-  const excludedCount = invoiceCount + reversalCount;
+  const excludedCount = manualCount + invoiceCount + reversalCount;
 
   if (page.length === 0) {
     body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
@@ -3559,14 +3618,18 @@ function populateTxTable(txs) {
       const notesCell = notes
         ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
+      const isManual = isManuallyExcluded(t);
       const isInvoice = isInvoicePayment(t);
       const isRev = isReversal(t);
-      const isExcluded = isInvoice || isRev;
+      const isExcluded = isManual || isInvoice || isRev;
       const rowStyle = isExcluded ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
-      // Escolhe ícone/label do selo: estorno → 🔄 ESTORNO, fatura → 💳 FATURA,
+      // Escolhe ícone/label do selo, em ordem de prioridade:
+      // manual → 🚫 EXCLUÍDO, estorno → 🔄 ESTORNO, fatura → 💳 FATURA,
       // transferência → 🔁 TRANSF, qualquer outra categoria excluída → 🚫.
       let badgeHtml = '';
-      if (isRev) {
+      if (isManual) {
+        badgeHtml = '<span class="invoice-badge" title="EXCLUÍDO MANUALMENTE — não conta nos totais (marcado via edição)" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFCDD2;color:#B71C1C;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🚫 EXCLUÍDO</span>';
+      } else if (isRev) {
         badgeHtml = '<span class="invoice-badge" title="ESTORNO — par auto-cancelado, não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFE0B2;color:#E65100;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🔄 ESTORNO</span>';
       } else if (isInvoice) {
         const catLow = (cat || '').toLowerCase();
@@ -3575,9 +3638,10 @@ function populateTxTable(txs) {
         else if (catLow.indexOf('transfer') !== -1 || catLow.indexOf('transf') !== -1) { emoji = '🔁'; label = 'TRANSF'; }
         badgeHtml = '<span class="invoice-badge" title="' + label + ' — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">' + emoji + ' ' + label + '</span>';
       }
-      const rowTitle = isRev ? 'Estorno detectado — não conta nos totais'
+      const rowTitle = isManual ? 'Excluído manualmente — não conta nos totais'
+        : (isRev ? 'Estorno detectado — não conta nos totais'
         : (isInvoice ? 'Não conta nos totais — categoria excluída via Settings'
-        : 'Clique para editar');
+        : 'Clique para editar'));
       return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${rowTitle}">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
@@ -3594,7 +3658,8 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Exibe o total de lançamentos + (se houver) o total excluído por fatura/estorno.
+  // Exibe o total de lançamentos + (se houver) o total excluído por
+  // manual, fatura/transferência ou estorno.
   const pag = document.getElementById('txPagination');
   if (pag) {
     if (!sorted.length) {
@@ -3602,6 +3667,9 @@ function populateTxTable(txs) {
     } else {
       let html = '<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ' + sorted.length + ' transações do período';
       const parts = [];
+      if (manualCount > 0) {
+        parts.push(manualCount + ' manual' + (manualCount === 1 ? '' : 'ais') + ' (' + centsToReal(manualCents) + ')');
+      }
       if (invoiceCount > 0) {
         parts.push(invoiceCount + ' fatura/transferência (' + centsToReal(invoiceCents) + ')');
       }
@@ -4136,6 +4204,10 @@ function openEditTx(txId) {
   const notesEl = document.getElementById('editTxNotes');
   if (notesEl) notesEl.value = tx.notes || '';
 
+  // Sincroniza o checkbox de exclusão manual com o estado persistido
+  const excludedEl = document.getElementById('editTxExcluded');
+  if (excludedEl) excludedEl.checked = isManuallyExcluded(tx);
+
   document.getElementById('editTxSuggestStatus').textContent = '';
   document.getElementById('editTxBackdrop').classList.add('active');
 }
@@ -4215,40 +4287,52 @@ async function saveEditTransaction() {
   const newNotes = notesEl ? notesEl.value.trim() : '';
   const oldNotes = (tx.notes || '').trim();
 
+  const excludedEl = document.getElementById('editTxExcluded');
+  const newExcluded = excludedEl ? !!excludedEl.checked : false;
+  const oldExcluded = isManuallyExcluded(tx);
+
   const categoryChanged = newCategoryId !== tx.category_id;
   const notesChanged = newNotes !== oldNotes;
+  const excludedChanged = newExcluded !== oldExcluded;
 
   // Nada mudou — só fecha
-  if (!categoryChanged && !notesChanged) {
+  if (!categoryChanged && !notesChanged && !excludedChanged) {
     closeEditModal();
     return;
   }
 
-  // Monta o payload PUT apenas com os campos alterados
-  const payload = {};
-  if (categoryChanged) payload.category_id = newCategoryId;
-  if (notesChanged) payload.notes = newNotes || null;
-
   btn.disabled = true;
   btn.textContent = 'Salvando...';
   try {
-    await api('transactions/' + tx.id, {
-      method: 'PUT',
-      body: payload
-    });
-    // Atualiza o STATE local (sem refetch)
-    if (categoryChanged) tx.category_id = newCategoryId;
-    if (notesChanged) tx.notes = newNotes || null;
-    // Atualiza o cache filtrado se a transação estiver lá
-    if (Array.isArray(STATE.txLastFiltered)) {
-      const found = STATE.txLastFiltered.find(t => t.id === tx.id);
-      if (found) {
-        if (categoryChanged) found.category_id = newCategoryId;
-        if (notesChanged) found.notes = newNotes || null;
+    // Aplica a mudança local do checkbox imediatamente (sem API — é
+    // uma marcação local por dispositivo).
+    if (excludedChanged) setTxManuallyExcluded(tx.id, newExcluded);
+
+    // Só chama a API do Organizze se categoria ou notas mudaram.
+    if (categoryChanged || notesChanged) {
+      const payload = {};
+      if (categoryChanged) payload.category_id = newCategoryId;
+      if (notesChanged) payload.notes = newNotes || null;
+      await api('transactions/' + tx.id, { method: 'PUT', body: payload });
+      if (categoryChanged) tx.category_id = newCategoryId;
+      if (notesChanged) tx.notes = newNotes || null;
+      // Atualiza o cache filtrado se a transação estiver lá
+      if (Array.isArray(STATE.txLastFiltered)) {
+        const found = STATE.txLastFiltered.find(t => t.id === tx.id);
+        if (found) {
+          if (categoryChanged) found.category_id = newCategoryId;
+          if (notesChanged) found.notes = newNotes || null;
+        }
       }
     }
     closeEditModal();
+    // Re-renderiza as telas afetadas para refletir a nova exclusão
     populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+    if (excludedChanged) {
+      if (STATE.currentPage === 'dashboard') renderDashboard();
+      if (STATE.currentPage === 'family') renderFamily();
+      if (STATE.currentPage === 'reports') renderReports();
+    }
   } catch (e) {
     showError('saveEditTransaction', e);
     alert('Erro ao salvar: ' + (e.message || 'desconhecido'));
@@ -5288,9 +5372,12 @@ async function renderReports() {
     try {
       const raw = await fetchTransactions(start, end);
       // Detecta estornos localmente (mês histórico, fora do STATE atual)
+      // e aplica também a exclusão manual (STATE.manuallyExcludedTxIds
+      // vale para qualquer período, não só o atual).
       const monthReversals = detectReversals(raw);
       const afterInvoice = excludeInvoicePayments(raw);
-      const txs = afterInvoice.filter(function(t) { return !monthReversals.has(t.id); });
+      const afterReversals = afterInvoice.filter(function(t) { return !monthReversals.has(t.id); });
+      const txs = excludeManuallyExcluded(afterReversals);
       let income = 0, expense = 0;
       txs.forEach(t => {
         const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -5462,6 +5549,7 @@ if (fcC) fcC.addEventListener('keydown', function(ev){
 loadTheme();
 loadInvoicePaymentSettings();
 loadReversalSettings();
+loadManuallyExcludedIds();
 checkSavedLogin();
 </script>
 </body>
