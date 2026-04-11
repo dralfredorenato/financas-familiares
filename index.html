@@ -773,6 +773,7 @@ tr:hover td { background: var(--bg-card-alt); }
     </div>
     <div class="nav-item active" data-page="dashboard"><span class="emoji">📊</span> Dashboard</div>
     <div class="nav-item" data-page="transactions"><span class="emoji">💳</span> Lançamentos</div>
+    <div class="nav-item" data-page="fixedBills"><span class="emoji">📆</span> Gastos Fixos</div>
     <div class="nav-item" data-page="budget"><span class="emoji">🎯</span> Orçamento</div>
     <div class="nav-item" data-page="cards"><span class="emoji">💎</span> Cartões</div>
     <div class="nav-item" data-page="family"><span class="emoji">👨‍👩‍👧</span> Família</div>
@@ -868,6 +869,30 @@ tr:hover td { background: var(--bg-card-alt); }
           </table>
         </div>
         <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;" id="txPagination"></div>
+      </div>
+    </div>
+
+    <!-- ═══ FIXED BILLS ═══ -->
+    <div class="page" id="page-fixedBills">
+      <div id="fbHeader"></div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📆 Contas do mês — semana a semana</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="refreshFixedBills()" title="Recarregar do Supabase">🔄 Atualizar</button>
+            <button class="btn btn-primary btn-sm" onclick="openNewFixedBillModal()">➕ Nova conta fixa</button>
+          </div>
+        </div>
+        <div id="fbWeeklyTimeline" style="padding:4px 0;"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📋 Todas as contas cadastradas</span></div>
+        <div class="table-container">
+          <table>
+            <thead><tr><th>Dia</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th style="width:120px;">Ações</th></tr></thead>
+            <tbody id="fbList"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1094,6 +1119,57 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
+<!-- ═══════════ MODAL (nova/editar conta fixa) ═══════════ -->
+<div class="modal-backdrop" id="fixedBillBackdrop" onclick="closeFixedBillModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:500px;">
+    <h3 id="fixedBillModalTitle">➕ Nova conta fixa</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Contas recorrentes mensais (aluguel, escola, streaming, etc). Fica salvo no Supabase e aparece na timeline do mês.</p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Nome</label>
+        <input type="text" id="fbName" placeholder="Ex: Aluguel, Marista, Netflix..." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Valor (R$)</label>
+        <input type="number" id="fbAmount" step="0.01" placeholder="0,00" />
+      </div>
+      <div class="form-col">
+        <label>Dia do vencimento</label>
+        <input type="number" id="fbDueDay" min="1" max="31" placeholder="1-31" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Tipo</label>
+        <select id="fbKind">
+          <option value="expense">💸 Despesa</option>
+          <option value="income">💰 Receita fixa (salário, aluguel recebido...)</option>
+        </select>
+      </div>
+      <div class="form-col">
+        <label>Categoria (livre)</label>
+        <input type="text" id="fbCategory" placeholder="Moradia, Educação..." />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Observações</label>
+        <input type="text" id="fbNotes" placeholder="Ex: débito automático Bradesco" />
+      </div>
+    </div>
+    <div id="fbModalStatus" style="font-size:13px;margin:10px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:space-between;margin-top:8px;flex-wrap:wrap;">
+      <button type="button" id="btnDeleteFixedBill" class="btn btn-secondary" onclick="deleteFixedBillFromModal()" style="display:none;color:var(--red);border-color:var(--red);">🗑️ Excluir</button>
+      <div style="display:flex;gap:12px;margin-left:auto;">
+        <button class="btn btn-secondary" onclick="closeFixedBillModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btnSaveFixedBill" onclick="saveFixedBill()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ FORCE CHANGE PASSWORD OVERLAY ═══════════ -->
 <div id="forceChangeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--bg-card);border-radius:20px;padding:32px 28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
@@ -1155,6 +1231,8 @@ let STATE = {
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   lastRefreshAt: null, // timestamp da última atualização bem-sucedida
   autoRefreshTimer: null, // handle do setInterval
+  fixedBills: [], // contas/receitas fixas mensais (Supabase.fixed_bills)
+  fixedBillsLoadedAt: null,
   reportMonths: 6,
 };
 const CHARTS = {};
@@ -1317,7 +1395,7 @@ setInterval(updateRefreshLabel, 30 * 1000);
 
 function isAnyModalOpen() {
   // Evita atropelar o usuário durante edição
-  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'forceChangeOverlay'];
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'forceChangeOverlay'];
   for (var i = 0; i < candidates.length; i++) {
     var el = document.getElementById(candidates[i]);
     if (!el) continue;
@@ -1488,6 +1566,8 @@ async function continueAfterLogin() {
     return;
   }
   try { await loadAll(); } catch (e) { showError('loadAll', e); }
+  // Carrega gastos fixos em paralelo, sem bloquear o render do dashboard
+  loadFixedBills().catch(function(e){ showError('loadFixedBills', e); });
   try { renderPage('dashboard'); } catch (e) {
     showError('renderPage(dashboard)', e);
     try {
@@ -1691,6 +1771,358 @@ async function submitChangePassword() {
   }
 }
 
+// ═══════════════════════════════════════════════
+//  GASTOS FIXOS (Supabase: public.fixed_bills)
+// ═══════════════════════════════════════════════
+
+// Carrega todas as contas ativas do Supabase
+async function loadFixedBills() {
+  if (!SB) return;
+  try {
+    const { data, error } = await SB
+      .from('fixed_bills')
+      .select('*')
+      .eq('active', true)
+      .order('due_day', { ascending: true });
+    if (error) throw error;
+    STATE.fixedBills = Array.isArray(data) ? data : [];
+    STATE.fixedBillsLoadedAt = Date.now();
+  } catch (e) {
+    showError('loadFixedBills', e);
+    STATE.fixedBills = [];
+  }
+}
+
+async function refreshFixedBills() {
+  await loadFixedBills();
+  renderFixedBills();
+}
+
+// Abre o modal em modo "novo"
+function openNewFixedBillModal() {
+  APP.__editingFixedBillId = null;
+  document.getElementById('fixedBillModalTitle').textContent = '➕ Nova conta fixa';
+  document.getElementById('fbName').value = '';
+  document.getElementById('fbAmount').value = '';
+  document.getElementById('fbDueDay').value = '';
+  document.getElementById('fbKind').value = 'expense';
+  document.getElementById('fbCategory').value = '';
+  document.getElementById('fbNotes').value = '';
+  document.getElementById('fbModalStatus').textContent = '';
+  document.getElementById('btnDeleteFixedBill').style.display = 'none';
+  document.getElementById('fixedBillBackdrop').classList.add('active');
+  setTimeout(() => { const el = document.getElementById('fbName'); if (el) el.focus(); }, 50);
+}
+
+// Abre o modal em modo "editar"
+function openEditFixedBillModal(id) {
+  const bill = STATE.fixedBills.find(b => b.id === id);
+  if (!bill) { showError('openEditFixedBillModal', new Error('Conta ' + id + ' não encontrada')); return; }
+  APP.__editingFixedBillId = id;
+  document.getElementById('fixedBillModalTitle').textContent = '✏️ Editar conta fixa';
+  document.getElementById('fbName').value = bill.name || '';
+  document.getElementById('fbAmount').value = ((bill.amount_cents || 0) / 100).toFixed(2);
+  document.getElementById('fbDueDay').value = bill.due_day || '';
+  document.getElementById('fbKind').value = bill.kind || 'expense';
+  document.getElementById('fbCategory').value = bill.category || '';
+  document.getElementById('fbNotes').value = bill.notes || '';
+  document.getElementById('fbModalStatus').textContent = '';
+  document.getElementById('btnDeleteFixedBill').style.display = '';
+  document.getElementById('fixedBillBackdrop').classList.add('active');
+}
+
+function closeFixedBillModal(e) {
+  if (e && e.target !== document.getElementById('fixedBillBackdrop')) return;
+  document.getElementById('fixedBillBackdrop').classList.remove('active');
+  APP.__editingFixedBillId = null;
+}
+
+// Salva (insert ou update) no Supabase
+async function saveFixedBill() {
+  const name = document.getElementById('fbName').value.trim();
+  const amountStr = document.getElementById('fbAmount').value;
+  const dueDay = parseInt(document.getElementById('fbDueDay').value, 10);
+  const kind = document.getElementById('fbKind').value;
+  const category = document.getElementById('fbCategory').value.trim() || null;
+  const notes = document.getElementById('fbNotes').value.trim() || null;
+  const status = document.getElementById('fbModalStatus');
+  const btn = document.getElementById('btnSaveFixedBill');
+
+  if (!name) {
+    status.innerHTML = '<span style="color:var(--red);">Informe o nome.</span>';
+    return;
+  }
+  const amount = parseFloat(amountStr);
+  if (isNaN(amount) || amount < 0) {
+    status.innerHTML = '<span style="color:var(--red);">Valor inválido.</span>';
+    return;
+  }
+  if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) {
+    status.innerHTML = '<span style="color:var(--red);">Dia do vencimento deve ser entre 1 e 31.</span>';
+    return;
+  }
+  if (!SB) {
+    status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não disponível.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Salvando no Supabase...</span>';
+
+  const payload = {
+    name: name,
+    amount_cents: Math.round(amount * 100),
+    due_day: dueDay,
+    kind: kind,
+    category: category,
+    notes: notes
+  };
+
+  try {
+    const editingId = APP.__editingFixedBillId;
+    if (editingId) {
+      const { error } = await SB
+        .from('fixed_bills')
+        .update(payload)
+        .eq('id', editingId);
+      if (error) throw error;
+    } else {
+      // Anexa created_by para rastreabilidade
+      if (APP.__user && APP.__user.id) payload.created_by = APP.__user.id;
+      const { error } = await SB.from('fixed_bills').insert(payload);
+      if (error) throw error;
+    }
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Salvo!</span>';
+    await loadFixedBills();
+    renderFixedBills();
+    setTimeout(() => {
+      document.getElementById('fixedBillBackdrop').classList.remove('active');
+      APP.__editingFixedBillId = null;
+      btn.disabled = false;
+      btn.textContent = '💾 Salvar';
+    }, 500);
+  } catch (e) {
+    showError('saveFixedBill', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar';
+  }
+}
+
+async function deleteFixedBillFromModal() {
+  const id = APP.__editingFixedBillId;
+  if (!id) return;
+  if (!confirm('Excluir esta conta fixa permanentemente?')) return;
+  const status = document.getElementById('fbModalStatus');
+  status.innerHTML = '<span style="color:var(--text-secondary);">Excluindo...</span>';
+  try {
+    // Soft-delete: active=false
+    const { error } = await SB
+      .from('fixed_bills')
+      .update({ active: false })
+      .eq('id', id);
+    if (error) throw error;
+    await loadFixedBills();
+    renderFixedBills();
+    document.getElementById('fixedBillBackdrop').classList.remove('active');
+    APP.__editingFixedBillId = null;
+  } catch (e) {
+    showError('deleteFixedBill', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+  }
+}
+
+// Renderiza a página Gastos Fixos: cabeçalho com totais, timeline semanal, lista
+function renderFixedBills() {
+  // Se ainda não carregou, carrega e re-renderiza quando pronto
+  if (STATE.fixedBillsLoadedAt === null) {
+    loadFixedBills().then(renderFixedBills);
+    document.getElementById('fbHeader').innerHTML = '<div class="card"><div class="empty-state"><div class="emoji">⏳</div><div>Carregando gastos fixos...</div></div></div>';
+    document.getElementById('fbWeeklyTimeline').innerHTML = '';
+    document.getElementById('fbList').innerHTML = '';
+    return;
+  }
+
+  const bills = STATE.fixedBills || [];
+  const expenses = bills.filter(b => b.kind === 'expense');
+  const incomes = bills.filter(b => b.kind === 'income');
+  const totalExpense = expenses.reduce((s, b) => s + (b.amount_cents || 0), 0);
+  const totalIncome = incomes.reduce((s, b) => s + (b.amount_cents || 0), 0);
+  const netCents = totalIncome - totalExpense;
+
+  // Receitas reais já depositadas no mês atual (do Organizze)
+  const now = new Date();
+  const monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  const realIncomeCents = (STATE.transactions || [])
+    .filter(t => {
+      if (!t.date) return false;
+      const d = new Date(t.date);
+      return d >= monthStartDate && d <= now;
+    })
+    .reduce((s, t) => {
+      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+      return v > 0 ? s + v : s;
+    }, 0);
+  const realVsFixedDiff = realIncomeCents - totalExpense;
+
+  // ─── CABEÇALHO: totais e alerta ───
+  const alertColor = netCents < 0 ? 'var(--red)' : 'var(--green-600)';
+  const alertBg = netCents < 0 ? 'rgba(198,40,40,0.08)' : 'rgba(67,160,71,0.08)';
+  const alertIcon = netCents < 0 ? '⚠️' : '✅';
+  let headerHTML = '<div class="grid-4" style="margin-bottom:16px;">';
+  headerHTML += '<div class="stat-card">'
+    + '<div class="stat-emoji">💸</div>'
+    + '<div class="stat-label">Despesas fixas</div>'
+    + '<div class="stat-value negative">' + centsToReal(totalExpense) + '</div>'
+    + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">' + expenses.length + ' conta' + (expenses.length === 1 ? '' : 's') + '</div>'
+    + '</div>';
+  headerHTML += '<div class="stat-card">'
+    + '<div class="stat-emoji">💰</div>'
+    + '<div class="stat-label">Receitas fixas previstas</div>'
+    + '<div class="stat-value positive">' + centsToReal(totalIncome) + '</div>'
+    + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">' + incomes.length + ' fonte' + (incomes.length === 1 ? '' : 's') + '</div>'
+    + '</div>';
+  headerHTML += '<div class="stat-card">'
+    + '<div class="stat-emoji">' + alertIcon + '</div>'
+    + '<div class="stat-label">Saldo previsto (receitas − despesas)</div>'
+    + '<div class="stat-value ' + (netCents >= 0 ? 'positive' : 'negative') + '">' + centsToReal(netCents) + '</div>'
+    + '</div>';
+  headerHTML += '<div class="stat-card">'
+    + '<div class="stat-emoji">🏦</div>'
+    + '<div class="stat-label">Receitas reais do mês (Organizze)</div>'
+    + '<div class="stat-value ' + (realVsFixedDiff >= 0 ? 'positive' : 'negative') + '">' + centsToReal(realIncomeCents) + '</div>'
+    + '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">' + (realVsFixedDiff >= 0 ? 'Cobre ✓' : 'Faltam ' + centsToReal(Math.abs(realVsFixedDiff))) + '</div>'
+    + '</div>';
+  headerHTML += '</div>';
+
+  // Alerta pedagógico: quando receita real não cobre as despesas fixas
+  if (totalExpense > 0 && realIncomeCents > 0 && realVsFixedDiff < 0) {
+    headerHTML += '<div style="background:' + alertBg + ';border-left:4px solid ' + alertColor + ';padding:14px 18px;border-radius:8px;margin-bottom:16px;">'
+      + '<div style="font-weight:600;color:' + alertColor + ';font-size:15px;margin-bottom:4px;">⚠️ As receitas reais deste mês NÃO cobrem as despesas fixas</div>'
+      + '<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">'
+      + 'Receitas já depositadas: <strong>' + centsToReal(realIncomeCents) + '</strong> · '
+      + 'Despesas fixas do mês: <strong>' + centsToReal(totalExpense) + '</strong> · '
+      + 'Déficit: <strong style="color:var(--red);">' + centsToReal(Math.abs(realVsFixedDiff)) + '</strong>'
+      + '</div>'
+      + '</div>';
+  }
+
+  document.getElementById('fbHeader').innerHTML = headerHTML;
+
+  // ─── TIMELINE SEMANAL ───
+  if (!bills.length) {
+    document.getElementById('fbWeeklyTimeline').innerHTML = '<div class="empty-state"><div class="emoji">📭</div><div>Nenhuma conta fixa cadastrada ainda.</div><div style="font-size:13px;color:var(--text-muted);margin-top:8px;">Clique em "➕ Nova conta fixa" para começar.</div></div>';
+  } else {
+    document.getElementById('fbWeeklyTimeline').innerHTML = buildWeeklyTimelineHTML(bills);
+  }
+
+  // ─── LISTA DE CONTAS ───
+  const listEl = document.getElementById('fbList');
+  if (!bills.length) {
+    listEl.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div style="font-size:13px;">Sem contas cadastradas</div></div></td></tr>';
+  } else {
+    const rows = bills.slice().sort((a, b) => (a.due_day || 0) - (b.due_day || 0));
+    listEl.innerHTML = rows.map(b => {
+      const isExp = b.kind === 'expense';
+      const amountColor = isExp ? 'var(--red)' : 'var(--green-600)';
+      const typeLabel = isExp ? '💸 Despesa' : '💰 Receita';
+      const escapedName = String(b.name || '—').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const escapedCat = String(b.category || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<tr style="cursor:pointer;" onclick="openEditFixedBillModal(\'' + b.id + '\')" title="Clique para editar">'
+        + '<td style="width:60px;text-align:center;font-weight:600;">Dia ' + b.due_day + '</td>'
+        + '<td><strong>' + escapedName + '</strong>' + (b.notes ? '<br><span style="font-size:11px;color:var(--text-muted);">' + String(b.notes).replace(/</g, '&lt;') + '</span>' : '') + '</td>'
+        + '<td>' + (escapedCat || '—') + '</td>'
+        + '<td>' + typeLabel + '</td>'
+        + '<td style="font-family:\'Space Mono\',monospace;font-weight:600;color:' + amountColor + ';">' + centsToReal(b.amount_cents || 0) + '</td>'
+        + '<td style="text-align:center;" onclick="event.stopPropagation();">'
+        + '<button class="btn btn-secondary btn-sm" onclick="openEditFixedBillModal(\'' + b.id + '\')">✏️</button>'
+        + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+}
+
+// Agrupa contas por semana do mês (1-7, 8-14, 15-21, 22-28, 29-31)
+function buildWeeklyTimelineHTML(bills) {
+  const weeks = [
+    { label: 'Semana 1', from: 1, to: 7 },
+    { label: 'Semana 2', from: 8, to: 14 },
+    { label: 'Semana 3', from: 15, to: 21 },
+    { label: 'Semana 4', from: 22, to: 28 },
+    { label: 'Semana 5', from: 29, to: 31 }
+  ];
+  const today = new Date();
+  const currentDay = today.getDate();
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">';
+
+  for (const w of weeks) {
+    const inWeek = bills
+      .filter(b => b.kind === 'expense' && b.due_day >= w.from && b.due_day <= w.to)
+      .sort((a, b) => a.due_day - b.due_day);
+    const incomesInWeek = bills
+      .filter(b => b.kind === 'income' && b.due_day >= w.from && b.due_day <= w.to)
+      .sort((a, b) => a.due_day - b.due_day);
+
+    const weekTotalExp = inWeek.reduce((s, b) => s + (b.amount_cents || 0), 0);
+    const weekTotalInc = incomesInWeek.reduce((s, b) => s + (b.amount_cents || 0), 0);
+
+    // Determinar status da semana (passada, atual, futura)
+    let weekStatus = 'future';
+    if (currentDay > w.to) weekStatus = 'past';
+    else if (currentDay >= w.from && currentDay <= w.to) weekStatus = 'current';
+
+    const borderColor = weekStatus === 'current' ? 'var(--green-600)'
+      : weekStatus === 'past' ? 'var(--text-muted)'
+      : 'var(--border)';
+    const bgColor = weekStatus === 'current' ? 'rgba(67,160,71,0.06)'
+      : weekStatus === 'past' ? 'var(--bg-card-alt)'
+      : 'var(--bg-card)';
+    const opacity = weekStatus === 'past' ? '0.6' : '1';
+    const statusBadge = weekStatus === 'current' ? ' <span style="font-size:11px;background:var(--green-600);color:#fff;padding:2px 8px;border-radius:10px;margin-left:4px;">atual</span>'
+      : weekStatus === 'past' ? ' <span style="font-size:11px;color:var(--text-muted);">✓ passou</span>'
+      : '';
+
+    html += '<div style="border:2px solid ' + borderColor + ';background:' + bgColor + ';border-radius:12px;padding:14px;opacity:' + opacity + ';">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+    html += '<strong style="font-size:14px;">' + w.label + statusBadge + '</strong>';
+    html += '<span style="font-size:11px;color:var(--text-muted);">dias ' + w.from + '–' + w.to + '</span>';
+    html += '</div>';
+
+    if (!inWeek.length && !incomesInWeek.length) {
+      html += '<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:8px 0;">— sem contas —</div>';
+    } else {
+      if (incomesInWeek.length) {
+        html += '<div style="font-size:11px;color:var(--green-600);font-weight:600;margin-bottom:4px;">💰 Entradas</div>';
+        for (const b of incomesInWeek) {
+          html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border);">';
+          html += '<span>Dia ' + b.due_day + ' · ' + String(b.name || '').replace(/</g, '&lt;') + '</span>';
+          html += '<strong style="color:var(--green-600);">' + centsToReal(b.amount_cents || 0) + '</strong>';
+          html += '</div>';
+        }
+      }
+      if (inWeek.length) {
+        html += '<div style="font-size:11px;color:var(--red);font-weight:600;margin:8px 0 4px;">💸 Saídas</div>';
+        for (const b of inWeek) {
+          html += '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border);">';
+          html += '<span>Dia ' + b.due_day + ' · ' + String(b.name || '').replace(/</g, '&lt;') + '</span>';
+          html += '<strong style="color:var(--red);">' + centsToReal(b.amount_cents || 0) + '</strong>';
+          html += '</div>';
+        }
+      }
+      const weekNet = weekTotalInc - weekTotalExp;
+      html += '<div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:2px solid var(--border);font-size:12px;">';
+      html += '<strong>Total semana</strong>';
+      html += '<strong style="color:' + (weekNet >= 0 ? 'var(--green-600)' : 'var(--red)') + ';">' + centsToReal(weekNet) + '</strong>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 async function doLogout() {
   try { if (SB) await SB.auth.signOut(); } catch (e) { console.warn('signOut error', e); }
   stopAutoRefresh();
@@ -1704,6 +2136,8 @@ async function doLogout() {
   STATE.invoices = {};
   STATE.lastRefreshAt = null;
   STATE.selectedTxIds.clear();
+  STATE.fixedBills = [];
+  STATE.fixedBillsLoadedAt = null;
   // Nota: credenciais do Organizze são preservadas (mais conveniente).
   // Use "Limpar credenciais" em Configurações para removê-las.
   document.getElementById('app').classList.remove('active');
@@ -1757,6 +2191,7 @@ async function checkSavedLogin() {
     return;
   }
   try { await loadAll(); } catch (e) { showError('checkSavedLogin:loadAll', e); }
+  loadFixedBills().catch(function(e){ showError('loadFixedBills', e); });
   try { renderPage('dashboard'); } catch (e) { showError('checkSavedLogin:renderDashboard', e); }
   // Inicia o polling automático após auto-login
   startAutoRefresh();
@@ -1831,6 +2266,7 @@ async function fetchTransactions(s, e) { return api('transactions?start_date=' +
 const pageTitles = {
   dashboard: '📊 Dashboard',
   transactions: '💳 Lançamentos',
+  fixedBills: '📆 Gastos Fixos',
   budget: '🎯 Orçamento',
   cards: '💎 Cartões',
   family: '👨‍👩‍👧 Família',
@@ -1856,6 +2292,7 @@ function renderPage(page) {
   switch(page) {
     case 'dashboard': renderDashboard(); break;
     case 'transactions': renderTransactions(); break;
+    case 'fixedBills': renderFixedBills(); break;
     case 'budget': renderBudget(); break;
     case 'cards': renderCards(); break;
     case 'family': renderFamily(); break;
