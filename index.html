@@ -552,6 +552,42 @@ tr:hover td { background: var(--bg-card-alt); }
 .btn-secondary:hover { border-color: var(--green-500); }
 .btn-sm { padding: 8px 14px; font-size: 12px; }
 
+/* ─── EXPORT DROPDOWN MENU ─── */
+.export-menu-wrap { position: relative; display: inline-block; }
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 6px;
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+.export-menu.open { display: flex; }
+.export-menu button {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-menu button:hover { background: var(--bg-card-alt); }
+
 /* ─── PROGRESS BARS ─── */
 .progress-container { margin-bottom: 16px; }
 .progress-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
@@ -872,9 +908,16 @@ tr:hover td { background: var(--bg-card-alt); }
           <span class="card-title">🔍 Filtros</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" onclick="bulkCategorize()" title="Sugere categoria para todos os lançamentos filtrados usando IA local">🤖 Categorizar tudo</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Exportar como PDF">📄 PDF</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportPrint()" title="Imprimir">🖨️ Imprimir</button>
-            <button class="btn btn-secondary btn-sm" onclick="exportWhatsApp()" title="Enviar via WhatsApp">💬 WhatsApp</button>
+            <div class="export-menu-wrap">
+              <button class="btn btn-secondary btn-sm" onclick="toggleExportMenu(event)" title="Exportar lançamentos filtrados" aria-haspopup="menu" aria-expanded="false" id="btnExportMenu">📤 Exportar ▾</button>
+              <div class="export-menu" id="exportMenu" role="menu" aria-labelledby="btnExportMenu">
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportPrint();">🖨️ Imprimir</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportPDF();">📄 PDF</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportCSV();">📊 CSV</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportXLS();">📈 XLS</button>
+                <button type="button" role="menuitem" onclick="closeExportMenu(); exportWhatsApp();">💬 WhatsApp</button>
+              </div>
+            </div>
             <button class="btn btn-primary btn-sm" onclick="openModal('newTransaction')">➕ Novo</button>
           </div>
         </div>
@@ -3559,6 +3602,134 @@ function exportWhatsApp() {
     alert('Erro ao preparar WhatsApp: ' + (e.message || 'desconhecido'));
   }
 }
+
+// ─── Helpers para CSV / XLS ─────────────────────
+// Escapa um valor para CSV seguindo RFC 4180: envolve em aspas se contém
+// vírgula, ponto-e-vírgula, aspas ou quebra de linha; duplica aspas internas.
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (/[",;\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+// Gera um array de linhas [header, ...rows] a partir das transações já
+// filtradas e ordenadas — compartilhado por exportCSV e exportXLS.
+function buildExportRows(txs) {
+  const header = ['Data', 'Descrição', 'Categoria', 'Conta/Cartão', 'Observações', 'Valor (R$)'];
+  const rows = txs.map(t => {
+    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
+    const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '';
+    const src = getTxSource(t);
+    // Valor em formato brasileiro (vírgula decimal), negativo preservado.
+    const reais = (val / 100).toFixed(2).replace('.', ',');
+    return [
+      fmtDate(t.date),
+      t.description || '',
+      cat,
+      src.label || '',
+      t.notes || '',
+      reais
+    ];
+  });
+  return { header, rows };
+}
+
+// Baixa um Blob com o nome dado (usa URL.createObjectURL + link temporário).
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportCSV() {
+  try {
+    const txs = txsForExport();
+    const { header, rows } = buildExportRows(txs);
+    // Usamos ; como separador — padrão do Excel pt-BR, evita conflito com a
+    // vírgula decimal brasileira. BOM UTF-8 garante acentos corretos no Excel.
+    const sep = ';';
+    const lines = [header.map(csvEscape).join(sep)];
+    rows.forEach(r => lines.push(r.map(csvEscape).join(sep)));
+    const csv = '\uFEFF' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    downloadBlob(blob, 'lancamentos-' + today() + '.csv');
+  } catch (e) {
+    showError('exportCSV', e);
+    alert('Erro ao gerar CSV: ' + (e.message || 'desconhecido'));
+  }
+}
+
+function exportXLS() {
+  try {
+    const txs = txsForExport();
+    const { header, rows } = buildExportRows(txs);
+    const period = getPeriodLabel();
+    const totals = getTotalsFromTxs(txs);
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    // Gera um "XLS" via HTML table com namespace Excel — o Excel abre e
+    // preserva fórmulas básicas, sem precisar de lib externa (SheetJS etc.).
+    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    html += '<head><meta charset="UTF-8">';
+    html += '<xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>';
+    html += '<x:Name>Lancamentos</x:Name>';
+    html += '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>';
+    html += '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>';
+    html += '<style>td,th{mso-number-format:"\\@";font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;} td.num{mso-number-format:"#,##0.00";text-align:right;}</style>';
+    html += '</head><body>';
+    html += '<table border="1">';
+    html += '<tr><td colspan="6"><b>Família Metzger - Lançamentos</b></td></tr>';
+    html += '<tr><td colspan="6">Período: ' + esc(period) + '</td></tr>';
+    html += '<tr><td colspan="6">Receitas: ' + esc(centsToReal(totals.income)) + ' · Despesas: ' + esc(centsToReal(totals.expense)) + ' · Saldo: ' + esc(centsToReal(totals.net)) + '</td></tr>';
+    html += '<tr></tr>';
+    html += '<tr>' + header.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach(r => {
+      html += '<tr>';
+      // Colunas de texto
+      for (let i = 0; i < 5; i++) html += '<td>' + esc(r[i]) + '</td>';
+      // Coluna de valor como número real (Excel calcula). Converte vírgula → ponto.
+      const numeric = String(r[5]).replace(/\./g, '').replace(',', '.');
+      html += '<td class="num">' + esc(numeric) + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></body></html>';
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    downloadBlob(blob, 'lancamentos-' + today() + '.xls');
+  } catch (e) {
+    showError('exportXLS', e);
+    alert('Erro ao gerar XLS: ' + (e.message || 'desconhecido'));
+  }
+}
+
+// ─── Dropdown do botão "Exportar" ────────────────
+function toggleExportMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('btnExportMenu');
+  if (!menu || !btn) return;
+  const isOpen = menu.classList.toggle('open');
+  btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+function closeExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('btnExportMenu');
+  if (menu) menu.classList.remove('open');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+// Fecha o menu ao clicar fora dele ou apertar Esc
+document.addEventListener('click', function(e) {
+  const wrap = e.target.closest && e.target.closest('.export-menu-wrap');
+  if (!wrap) closeExportMenu();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeExportMenu();
+});
 
 // ═══════════════════════════════════════════════
 //  CATEGORIZAÇÃO AUTOMÁTICA (heurística local)
