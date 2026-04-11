@@ -708,15 +708,15 @@ tr:hover td { background: var(--bg-card-alt); }
     <p class="subtitle">Gestão Financeira · Organizze</p>
     <div class="login-error" id="loginError"></div>
     <div class="form-group">
-      <label>📧 E-mail do Organizze</label>
-      <input type="email" id="loginEmail" placeholder="seu@email.com" />
+      <label>📧 E-mail</label>
+      <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="username" />
     </div>
     <div class="form-group">
-      <label>🔑 Token da API</label>
-      <input type="password" id="loginToken" placeholder="Cole seu token aqui" />
+      <label>🔒 Senha</label>
+      <input type="password" id="loginPassword" placeholder="Sua senha" autocomplete="current-password" />
     </div>
-    
-    <div id="loginStatus" style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:12px;min-height:18px;"></div>
+
+    <div id="loginStatus" style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:12px;min-height:18px;"></div>
     <button class="btn-login" id="btnLogin" onclick="doLogin()">Entrar</button>
   </div>
 </div>
@@ -737,6 +737,7 @@ tr:hover td { background: var(--bg-card-alt); }
     <div class="nav-item" data-page="cards"><span class="emoji">💎</span> Cartões</div>
     <div class="nav-item" data-page="family"><span class="emoji">👨‍👩‍👧</span> Família</div>
     <div class="nav-item" data-page="reports"><span class="emoji">📈</span> Relatórios</div>
+    <div class="nav-item" data-page="settings"><span class="emoji">⚙️</span> Configurações</div>
     <div class="sidebar-footer">
       <button class="btn-logout" onclick="doLogout()">🚪 Sair</button>
     </div>
@@ -873,6 +874,35 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
     </div>
 
+    <!-- ═══ SETTINGS ═══ -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-header"><span class="card-title">🔗 Conexão com o Organizze</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px;">Para o app buscar seus dados, ele precisa do seu e-mail e do token da API do Organizze.</p>
+          <div style="background: var(--blue-light); border-left: 4px solid var(--blue); padding: 14px 16px; border-radius: 8px; margin: 16px 0; font-size: 14px; line-height: 1.5;">
+            <strong>Como obter seu token do Organizze:</strong><br>
+            1. Acesse <a href="https://app.organizze.com.br/configuracoes/api" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">app.organizze.com.br/configuracoes/api</a><br>
+            2. Clique em "Gerar token" (ou copie o existente)<br>
+            3. Cole abaixo e clique em "Salvar e conectar"
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">E-mail da sua conta no Organizze</label>
+            <input type="email" id="orgEmailInput" placeholder="seu@email.com" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Token da API</label>
+            <input type="password" id="orgTokenInput" placeholder="Cole seu token aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div id="orgConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="saveOrgConfig()">💾 Salvar e conectar</button>
+            <button class="btn btn-secondary" onclick="clearOrgConfig()">🗑️ Limpar credenciais</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1002,8 +1032,22 @@ function memberTagHTML(m) {
 //  API
 // ═════════════════════════════════════════════════
 
+function getOrgCreds() {
+  return {
+    email: localStorage.getItem('org_email') || '',
+    token: localStorage.getItem('org_token') || ''
+  };
+}
+
 async function api(endpoint, options) {
   if (!options) options = {};
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    var err = new Error('Organizze não configurado. Vá em Configurações para conectar.');
+    err.status = 0;
+    err.code = 'NO_ORG_CREDS';
+    throw err;
+  }
   // Normaliza: remove barras iniciais para não virar "rest/v2//transactions"
   var clean = String(endpoint).replace(/^\/+/, '');
   var url = '/api/proxy?endpoint=' + encodeURIComponent(clean);
@@ -1011,8 +1055,8 @@ async function api(endpoint, options) {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'X-Organizze-Email': APP.email,
-      'X-Organizze-Token': APP.token
+      'X-Organizze-Email': creds.email,
+      'X-Organizze-Token': creds.token
     }
   };
   if (options.body !== undefined && options.body !== null) {
@@ -1067,59 +1111,80 @@ async function loadAll() {
   }
 }
 
+// ═══════════════════════════════════════════════
+//  APP LOGIN (email + senha)
+// ═══════════════════════════════════════════════
 async function doLogin() {
   var email = document.getElementById('loginEmail').value.trim();
-  var token = document.getElementById('loginToken').value.trim();
+  var password = document.getElementById('loginPassword').value;
   var btn = document.getElementById('btnLogin');
-  if (!email || !token) { setLoginStatus('Preencha e-mail e token.'); return; }
-  setLoginStatus('Conectando ao Organizze...');
+  if (!email || !password) { setLoginStatus('Preencha e-mail e senha.'); return; }
+  setLoginStatus('Autenticando...');
   if (btn) btn.disabled = true;
-  APP.email = email; APP.token = token;
 
-  // --- 1. AUTH: se essa etapa falha, continuamos na tela de login ---
+  // --- 1. AUTH contra /api/auth ---
   try {
-    var accounts = await api('accounts');
-    if (!Array.isArray(accounts)) throw new Error('Resposta inválida do servidor (accounts)');
-    STATE.accounts = accounts;
-    localStorage.setItem('org_email', email);
-    localStorage.setItem('org_token', token);
+    var r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password })
+    });
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (!r.ok) {
+      var msg;
+      if (r.status === 503) {
+        msg = (data && data.error) || 'Servidor sem APP_PASSWORD configurado.';
+      } else if (r.status === 401) {
+        msg = 'E-mail ou senha incorretos.';
+      } else {
+        msg = (data && data.error) || ('Falha ' + r.status);
+      }
+      setLoginStatus(msg);
+      if (btn) btn.disabled = false;
+      return;
+    }
+    localStorage.setItem('app_authed', '1');
+    localStorage.setItem('app_email', email);
+    APP.email = email;
   } catch (e) {
-    console.error('[AUTH] Falha:', e);
-    var msg;
-    if (e && e.status === 401) msg = 'Credenciais inválidas. Confira e-mail e token.';
-    else if (e && e.status === 403) msg = 'Acesso negado (403). Verifique permissões do token.';
-    else if (e && e.status) msg = 'Falha (' + e.status + '): ' + (e.message || 'erro');
-    else msg = 'Falha de rede: ' + (e && e.message ? e.message : 'erro');
-    setLoginStatus(msg);
-    showError('login', e);
-    APP.email = ''; APP.token = '';
+    console.error('[AUTH] erro de rede:', e);
+    setLoginStatus('Erro de rede: ' + (e && e.message ? e.message : 'desconhecido'));
+    showError('login-fetch', e);
     if (btn) btn.disabled = false;
     return;
   }
 
-  // --- 2. MOSTRAR O APP PRIMEIRO (antes de carregar dados pesados) ---
-  // Isso garante que, se loadAll ou renderDashboard falhar, o usuário
-  // ainda vê a shell do aplicativo em vez de uma tela em branco.
+  // --- 2. Mostrar app shell ---
   try {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').classList.add('active');
     setLoginStatus('');
   } catch (e) { showError('showApp', e); }
 
-  // --- 3. Carregar dados (cada chamada já tem .catch interno) ---
-  setLoginStatus('Carregando dados...');
-  try {
-    await loadAll();
-  } catch (e) {
-    showError('loadAll', e);
+  // --- 3. Decidir destino: tem Organizze configurado? ---
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    // Primeiro login (ou credenciais limpas): manda pra Configurações
+    try {
+      renderPage('settings');
+      var s = document.getElementById('orgConfigStatus');
+      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso ao Organizze para começar.</span>';
+    } catch (e) { showError('renderPage(settings)', e); }
+    if (btn) btn.disabled = false;
+    return;
   }
 
-  // --- 4. Renderizar dashboard (erros aqui não devem zerar a tela) ---
+  // --- 4. Tem credenciais do Organizze: carrega dados e vai pro dashboard ---
+  try {
+    await loadAll();
+  } catch (e) { showError('loadAll', e); }
+
   try {
     renderPage('dashboard');
   } catch (e) {
     showError('renderPage(dashboard)', e);
-    // Fallback mínimo para garantir que algo apareça
     try {
       var ds = document.getElementById('dashStats');
       if (ds) ds.innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><div>Falha ao renderizar dashboard. Veja o banner vermelho no topo.</div></div>';
@@ -1130,28 +1195,106 @@ async function doLogin() {
 }
 
 function doLogout() {
-  APP.email = ''; APP.token = '';
+  APP.email = '';
   STATE.accounts = [];
   STATE.categories = [];
   STATE.transactions = [];
   STATE.creditCards = [];
   STATE.budgets = [];
   STATE.invoices = {};
-  localStorage.removeItem('org_email');
-  localStorage.removeItem('org_token');
+  localStorage.removeItem('app_authed');
+  // Nota: credenciais do Organizze são preservadas (mais conveniente).
+  // Use "Limpar credenciais" em Configurações para removê-las.
   document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display = '';
+  var pwd = document.getElementById('loginPassword');
+  if (pwd) pwd.value = '';
   setLoginStatus('');
 }
 
 async function checkSavedLogin() {
-  var e = localStorage.getItem('org_email');
-  var t = localStorage.getItem('org_token');
-  if (e && t) {
-    document.getElementById('loginEmail').value = e;
-    document.getElementById('loginToken').value = t;
-    await doLogin();
+  var authed = localStorage.getItem('app_authed');
+  var savedEmail = localStorage.getItem('app_email');
+  if (savedEmail) {
+    var el = document.getElementById('loginEmail');
+    if (el) el.value = savedEmail;
   }
+  if (authed !== '1') return;
+  // Já autenticado no app: pula a tela de login direto para o app shell.
+  APP.email = savedEmail || '';
+  try {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').classList.add('active');
+  } catch (e) { showError('checkSavedLogin:showApp', e); return; }
+
+  var creds = getOrgCreds();
+  if (!creds.email || !creds.token) {
+    try { renderPage('settings'); } catch (e) { showError('checkSavedLogin:renderSettings', e); }
+    return;
+  }
+  try { await loadAll(); } catch (e) { showError('checkSavedLogin:loadAll', e); }
+  try { renderPage('dashboard'); } catch (e) { showError('checkSavedLogin:renderDashboard', e); }
+}
+
+// ═══════════════════════════════════════════════
+//  ORGANIZZE CONFIG (Settings page)
+// ═══════════════════════════════════════════════
+function renderSettings() {
+  var e = localStorage.getItem('org_email') || '';
+  var t = localStorage.getItem('org_token') || '';
+  var ei = document.getElementById('orgEmailInput');
+  var ti = document.getElementById('orgTokenInput');
+  if (ei) ei.value = e;
+  if (ti) ti.value = t;
+  var s = document.getElementById('orgConfigStatus');
+  if (s && !s.innerHTML) s.textContent = '';
+}
+
+async function saveOrgConfig() {
+  var email = document.getElementById('orgEmailInput').value.trim();
+  var token = document.getElementById('orgTokenInput').value.trim();
+  var status = document.getElementById('orgConfigStatus');
+  if (!email || !token) {
+    status.innerHTML = '<span style="color: var(--red);">Preencha e-mail e token.</span>';
+    return;
+  }
+  localStorage.setItem('org_email', email);
+  localStorage.setItem('org_token', token);
+  status.innerHTML = '<span style="color: var(--text-secondary);">Validando credenciais no Organizze...</span>';
+  try {
+    var accounts = await api('accounts');
+    if (!Array.isArray(accounts)) throw new Error('Resposta inesperada do Organizze');
+    STATE.accounts = accounts;
+    status.innerHTML = '<span style="color: var(--green-600);">✅ Conectado! Carregando dados...</span>';
+    await loadAll();
+    renderPage('dashboard');
+  } catch (e) {
+    var msg;
+    if (e && e.status === 401) msg = 'Credenciais do Organizze inválidas. Confira e-mail e token.';
+    else if (e && e.status === 403) msg = 'Acesso negado pelo Organizze (403).';
+    else if (e && e.status) msg = 'Falha (' + e.status + '): ' + (e.message || 'erro');
+    else msg = 'Falha: ' + (e && e.message ? e.message : 'erro desconhecido');
+    status.innerHTML = '<span style="color: var(--red);">❌ ' + msg + '</span>';
+    showError('saveOrgConfig', e);
+    // Remove credenciais inválidas para não tentar usá-las de novo
+    localStorage.removeItem('org_email');
+    localStorage.removeItem('org_token');
+  }
+}
+
+function clearOrgConfig() {
+  if (!confirm('Remover as credenciais do Organizze deste dispositivo?')) return;
+  localStorage.removeItem('org_email');
+  localStorage.removeItem('org_token');
+  STATE.accounts = [];
+  STATE.categories = [];
+  STATE.transactions = [];
+  STATE.creditCards = [];
+  STATE.budgets = [];
+  STATE.invoices = {};
+  document.getElementById('orgEmailInput').value = '';
+  document.getElementById('orgTokenInput').value = '';
+  document.getElementById('orgConfigStatus').innerHTML = '<span style="color: var(--text-secondary);">Credenciais removidas.</span>';
 }
 
 async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
@@ -1166,6 +1309,7 @@ const pageTitles = {
   cards: '💎 Cartões',
   family: '👨‍👩‍👧 Família',
   reports: '📈 Relatórios',
+  settings: '⚙️ Configurações',
 };
 
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -1190,6 +1334,7 @@ function renderPage(page) {
     case 'cards': renderCards(); break;
     case 'family': renderFamily(); break;
     case 'reports': renderReports(); break;
+    case 'settings': renderSettings(); break;
   }
 }
 
@@ -1808,6 +1953,14 @@ document.addEventListener('keydown', e => {
 // ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
+// Enter no campo de senha dispara o login
+['loginEmail','loginPassword'].forEach(function(id){
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter') doLogin();
+  });
+});
+
 loadTheme();
 checkSavedLogin();
 </script>
