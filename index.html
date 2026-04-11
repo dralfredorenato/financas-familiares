@@ -1706,10 +1706,16 @@ function dayDiff(d1, d2) {
   return Math.abs(Math.round((a - b) / 86400000));
 }
 
-// Chave de agrupamento: conta/cartão + valor absoluto. Dois lançamentos
-// só podem formar um par de estorno se tiverem a mesma chave.
+// Chave de agrupamento: tipo+ID da fonte + valor absoluto. Dois lançamentos
+// só podem formar um par de estorno se tiverem a mesma chave. Prefixamos
+// com 'card:' / 'acc:' porque credit_card_id e account_id vêm de sequências
+// separadas no Organizze — sem o prefixo, um card.id=1 e um account.id=1
+// cairiam no mesmo grupo e poderiam ser cruzados como estorno indevidamente.
 function _reversalGroupKey(tx) {
-  const source = tx.credit_card_id || tx.account_id || 0;
+  let source;
+  if (tx.credit_card_id) source = 'card:' + tx.credit_card_id;
+  else if (tx.account_id) source = 'acc:' + tx.account_id;
+  else source = 'none:0';
   const val = Math.abs(tx.amount_cents || Math.round((tx.amount || 0) * 100));
   return source + '|' + val;
 }
@@ -3841,8 +3847,13 @@ function exportWhatsApp() {
 // ─── Helpers para CSV / XLS ─────────────────────
 // Escapa um valor para CSV seguindo RFC 4180: envolve em aspas se contém
 // vírgula, ponto-e-vírgula, aspas ou quebra de linha; duplica aspas internas.
+// Também neutraliza CSV injection: se uma célula começa com =, +, -, @,
+// TAB ou CR, o Excel/LibreOffice pode interpretar como fórmula ao abrir
+// (ex.: "=HYPERLINK(...)" exfiltrando dados). Prefixamos com apóstrofo
+// para forçar interpretação como texto puro.
 function csvEscape(v) {
-  const s = String(v == null ? '' : v);
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (/[",;\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
