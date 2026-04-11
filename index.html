@@ -896,7 +896,7 @@ tr:hover td { background: var(--bg-card-alt); }
       <div class="card">
         <div id="selectionBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
           <span id="selectionCount" style="font-weight:600;color:var(--green-800);">0 selecionado(s)</span>
-          <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🤖 Categorizar selecionados</button>
+          <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🏷️ Categorizar selecionados</button>
           <button class="btn btn-secondary btn-sm" onclick="clearSelection()">✕ Limpar seleção</button>
         </div>
         <div class="table-container">
@@ -1065,8 +1065,8 @@ tr:hover td { background: var(--bg-card-alt); }
         <span><strong>Adicionar aos Gastos Fixos</strong><br><span style="font-size:11px;color:var(--text-muted);">Copia os selecionados como contas fixas mensais</span></span>
       </button>
       <button class="fab-action-btn" onclick="bulkCategorizeSelected();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
-        <span style="font-size:22px;">🤖</span>
-        <span><strong>Categorizar selecionados</strong><br><span style="font-size:11px;color:var(--text-muted);">Aplica sugestões de IA local</span></span>
+        <span style="font-size:22px;">🏷️</span>
+        <span><strong>Categorizar selecionados</strong><br><span style="font-size:11px;color:var(--text-muted);">Escolha a categoria e aplique a todos</span></span>
       </button>
       <button class="fab-action-btn" onclick="clearSelection();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
         <span style="font-size:22px;">✕</span>
@@ -1256,6 +1256,30 @@ tr:hover td { background: var(--bg-card-alt); }
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeBatchFixedBillsModal()">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveBatchFixedBills" onclick="saveBatchFixedBills()">💾 Criar contas fixas</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MODAL (categorizar selecionados manualmente) ═══════════ -->
+<div class="modal-backdrop" id="bulkCategorizeBackdrop" onclick="closeBulkCategorizeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:460px;">
+    <h3>🏷️ Categorizar lançamentos selecionados</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;line-height:1.5;">
+      Aplicar a mesma categoria a <strong id="bulkCatCount">N</strong> lançamentos selecionados.
+    </p>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Categoria</label>
+        <div style="display:flex;gap:6px;">
+          <select id="bulkCategorySelect" style="flex:1;"></select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="openNewCategoryModal('bulkCategorySelect')" title="Criar nova categoria">➕</button>
+        </div>
+      </div>
+    </div>
+    <div id="bulkCategorizeStatus" style="font-size:13px;margin:12px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeBulkCategorizeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnBulkCategorize" onclick="saveBulkCategorize()">💾 Aplicar a todos</button>
     </div>
   </div>
 </div>
@@ -1486,7 +1510,7 @@ setInterval(updateRefreshLabel, 30 * 1000);
 
 function isAnyModalOpen() {
   // Evita atropelar o usuário durante edição
-  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'forceChangeOverlay'];
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'bulkCategorizeBackdrop', 'forceChangeOverlay'];
   for (var i = 0; i < candidates.length; i++) {
     var el = document.getElementById(candidates[i]);
     if (!el) continue;
@@ -3539,15 +3563,88 @@ async function bulkCategorize() {
   return _applyBulkSuggestions(txs, 'todos os lançamentos filtrados');
 }
 
-// Categoriza apenas os lançamentos selecionados via checkbox
-async function bulkCategorizeSelected() {
+// Abre modal manual para categorizar os selecionados (SEM IA)
+function bulkCategorizeSelected() {
+  hideFabMenu();
   const selectedIds = Array.from(STATE.selectedTxIds);
   if (!selectedIds.length) {
     alert('Nenhum lançamento selecionado.');
     return;
   }
-  const txs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
-  return _applyBulkSuggestions(txs, selectedIds.length + ' selecionado(s)');
+  openBulkCategorizeModal();
+}
+
+function openBulkCategorizeModal() {
+  const n = STATE.selectedTxIds.size;
+  if (!n) return;
+  document.getElementById('bulkCatCount').textContent = n;
+  // Popula o dropdown com as categorias (só as raiz)
+  const sel = document.getElementById('bulkCategorySelect');
+  sel.innerHTML = '<option value="">— Escolha uma categoria —</option>' + (STATE.categories || [])
+    .filter(c => !c.parent_id || c.parent_id === null)
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.value = '';
+  document.getElementById('bulkCategorizeStatus').textContent = '';
+  document.getElementById('bulkCategorizeBackdrop').classList.add('active');
+}
+
+function closeBulkCategorizeModal(e) {
+  if (e && e.target !== document.getElementById('bulkCategorizeBackdrop')) return;
+  document.getElementById('bulkCategorizeBackdrop').classList.remove('active');
+}
+
+async function saveBulkCategorize() {
+  const sel = document.getElementById('bulkCategorySelect');
+  const status = document.getElementById('bulkCategorizeStatus');
+  const btn = document.getElementById('btnBulkCategorize');
+  const newCategoryId = parseInt(sel.value, 10);
+  if (isNaN(newCategoryId)) {
+    status.innerHTML = '<span style="color:var(--red);">Escolha uma categoria.</span>';
+    return;
+  }
+  const selectedIds = Array.from(STATE.selectedTxIds);
+  if (!selectedIds.length) {
+    status.innerHTML = '<span style="color:var(--red);">Nenhum lançamento selecionado.</span>';
+    return;
+  }
+  const targetTxs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
+  // Se todos já estão na mesma categoria, avisa
+  const changing = targetTxs.filter(t => t.category_id !== newCategoryId);
+  if (!changing.length) {
+    status.innerHTML = '<span style="color:var(--orange);">Todos os selecionados já estão nessa categoria.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + changing.length + ' lançamento' + (changing.length === 1 ? '' : 's') + '...</span>';
+
+  let ok = 0, fail = 0;
+  for (const tx of changing) {
+    try {
+      await api('transactions/' + tx.id, {
+        method: 'PUT',
+        body: { category_id: newCategoryId }
+      });
+      tx.category_id = newCategoryId;
+      if (Array.isArray(STATE.txLastFiltered)) {
+        const found = STATE.txLastFiltered.find(t => t.id === tx.id);
+        if (found) found.category_id = newCategoryId;
+      }
+      ok++;
+    } catch (e) {
+      console.warn('bulkCategorize fail', tx.id, e);
+      fail++;
+    }
+  }
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  const catName = (STATE.categories.find(c => c.id === newCategoryId) || {}).name || '';
+  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' aplicado' + (ok === 1 ? '' : 's') + ' em "' + catName + '"' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '</span>';
+  btn.disabled = false;
+  btn.textContent = '💾 Aplicar a todos';
+  setTimeout(function() {
+    document.getElementById('bulkCategorizeBackdrop').classList.remove('active');
+  }, 1200);
 }
 
 // Helper compartilhado por bulkCategorize e bulkCategorizeSelected
