@@ -1089,6 +1089,29 @@ tr:hover td { background: var(--bg-card-alt); }
       </div>
 
       <div class="card" style="margin-top:20px;">
+        <div class="card-header">
+          <span class="card-title">💳 Pagamentos de fatura (não contar em dobro)</span>
+        </div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 10px;line-height:1.5;">
+            Quando você paga a fatura do cartão, o débito aparece no extrato como despesa <strong>além</strong> dos gastos já lançados pelo cartão — isso duplica o total. Marque aqui as categorias que você usa para pagamentos de fatura e o app passa a <strong>ignorá-las</strong> nos totais, gráficos, Saúde Financeira, Família, Relatórios e exportações.
+          </p>
+          <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 14px;line-height:1.5;">
+            As transações continuam aparecendo na lista de Lançamentos, só que com o selo <em>💳 Fatura — não contabilizado</em> e opacidade reduzida. Você também verá o total excluído no rodapé da lista.
+          </p>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Categorias consideradas "pagamento de fatura"</label>
+            <div id="invoicePayCatList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding:10px 12px;border:1px solid var(--border);background:var(--bg-input);border-radius:10px;"></div>
+          </div>
+          <div id="invoicePayStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="saveInvoicePayCategories()">💾 Salvar seleção</button>
+            <button class="btn btn-secondary" onclick="autoDetectInvoicePayments()" title="Procura descrições típicas como 'PAG FATURA', 'PAGTO CARTÃO NUBANK', etc.">🔍 Detectar automaticamente</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
         <div class="card-header"><span class="card-title">🔒 Trocar senha do app</span></div>
         <div style="padding: 8px 4px 4px;">
           <p style="color: var(--text-secondary); margin-bottom: 14px;">Defina uma nova senha para entrar no app. A senha é independente do Organizze.</p>
@@ -1447,6 +1470,7 @@ let STATE = {
   fixedBills: [], // contas/receitas fixas mensais (Supabase.fixed_bills)
   fixedBillsLoadedAt: null,
   reportMonths: 6,
+  invoicePaymentCategoryIds: [], // categorias consideradas "pagamento de fatura" (excluídas dos totais)
 };
 const CHARTS = {};
 const MEMBER_TAGS = {
@@ -1484,6 +1508,67 @@ function sortByName(items) {
 function getSortedRootCategories() {
   return sortByName((STATE.categories || []).filter(function(c) { return !c.parent_id || c.parent_id === null; }));
 }
+
+// ─── Exclusão de pagamentos de fatura ───────────────────────────────
+// O usuário marca, via Settings, quais categorias representam
+// "pagamento de fatura de cartão". Transações nessas categorias
+// continuam visíveis na lista de Lançamentos, mas são IGNORADAS
+// em todos os totais, gráficos, alertas e exportações — evitando
+// que os gastos do cartão sejam contados duas vezes (uma na
+// transação original, outra no débito da fatura em conta).
+const INVOICE_PAYMENT_LS_KEY = 'invoicePaymentCategoryIds';
+
+function loadInvoicePaymentSettings() {
+  try {
+    const raw = localStorage.getItem(INVOICE_PAYMENT_LS_KEY);
+    if (!raw) { STATE.invoicePaymentCategoryIds = []; return; }
+    const arr = JSON.parse(raw);
+    STATE.invoicePaymentCategoryIds = Array.isArray(arr)
+      ? arr.map(function(x) { return parseInt(x, 10); }).filter(function(x) { return !isNaN(x); })
+      : [];
+  } catch (_) {
+    STATE.invoicePaymentCategoryIds = [];
+  }
+}
+
+function saveInvoicePaymentSettings(ids) {
+  const clean = (ids || []).map(function(x) { return parseInt(x, 10); }).filter(function(x) { return !isNaN(x); });
+  STATE.invoicePaymentCategoryIds = clean;
+  try { localStorage.setItem(INVOICE_PAYMENT_LS_KEY, JSON.stringify(clean)); } catch (_) {}
+}
+
+function isInvoicePayment(tx) {
+  if (!tx || !tx.category_id) return false;
+  const ids = STATE.invoicePaymentCategoryIds || [];
+  return ids.indexOf(tx.category_id) !== -1;
+}
+
+// Filtra transações removendo pagamentos de fatura. Usado por toda a
+// contabilidade (KPIs, gráficos, relatórios, exportações, orçamento).
+function excludeInvoicePayments(txs) {
+  if (!Array.isArray(txs)) return [];
+  const ids = STATE.invoicePaymentCategoryIds || [];
+  if (!ids.length) return txs;
+  return txs.filter(function(t) { return !isInvoicePayment(t); });
+}
+
+// Heurística que reconhece descrições típicas de pagamento de fatura.
+// Usada pelo botão "Detectar automaticamente" na tela de Configurações.
+function looksLikeInvoicePayment(description) {
+  if (!description) return false;
+  const d = description.toLowerCase();
+  const patterns = [
+    /pag(amen)?t?o?\s*(de)?\s*fatur/,       // pag fatura, pagamento fatura, pagto de fatura
+    /pag(amen)?t?o?\s*(de)?\s*cart[aã]o/,   // pagamento cartao, pagto cartão
+    /fatur(a)?\s*cart[aã]o/,                 // fatura cartao
+    /fatur(a)?\s+(nubank|itau|santander|bradesco|inter|c6|bb|caixa|xp|neon|will|next|original|pic|pan|safra|pagbank)/,
+    /d[eé]bito\s*autom[aá]tico\s*(da)?\s*fatur/,
+    /quita[cç][aã]o\s*(da)?\s*fatur/,
+    /boleto\s*cart[aã]o/
+  ];
+  return patterns.some(function(re) { return re.test(d); });
+}
+
 function monthsAgo(n) {
   const d = new Date();
   d.setMonth(d.getMonth() - n);
@@ -2448,6 +2533,117 @@ function renderSettings() {
   if (ti) ti.value = t;
   var s = document.getElementById('orgConfigStatus');
   if (s && !s.innerHTML) s.textContent = '';
+  renderInvoicePayCategoryList();
+}
+
+// ─── Settings: pagamento de fatura ─────────────────────────────────
+function renderInvoicePayCategoryList() {
+  const list = document.getElementById('invoicePayCatList');
+  if (!list) return;
+  const cats = getSortedRootCategories();
+  const selected = STATE.invoicePaymentCategoryIds || [];
+  if (!cats.length) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:4px;">Nenhuma categoria carregada ainda. Conecte o Organizze primeiro.</div>';
+    return;
+  }
+  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  list.innerHTML = cats.map(function(c) {
+    const checked = selected.indexOf(c.id) !== -1 ? 'checked' : '';
+    const color = (c.color && /^#[0-9a-fA-F]{6}$/.test(c.color)) ? c.color : '#9E9E9E';
+    return '<label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:4px 2px;">'
+      + '<input type="checkbox" class="invoice-pay-cat" data-cat-id="' + c.id + '" ' + checked + ' />'
+      + '<span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:' + color + ';border:1px solid var(--border);"></span>'
+      + '<span>' + escHtml(c.name) + '</span>'
+      + '</label>';
+  }).join('');
+}
+
+function saveInvoicePayCategories() {
+  const checks = document.querySelectorAll('#invoicePayCatList input.invoice-pay-cat:checked');
+  const ids = Array.from(checks).map(function(el) { return parseInt(el.getAttribute('data-cat-id'), 10); });
+  saveInvoicePaymentSettings(ids);
+  const status = document.getElementById('invoicePayStatus');
+  if (status) {
+    status.innerHTML = ids.length
+      ? '<span style="color:var(--green-600);">✅ ' + ids.length + ' categoria' + (ids.length === 1 ? '' : 's') + ' marcada' + (ids.length === 1 ? '' : 's') + ' como pagamento de fatura. Totais atualizados.</span>'
+      : '<span style="color:var(--orange);">ℹ️ Nenhuma categoria marcada — nada será excluído dos totais.</span>';
+  }
+  // Re-renderiza a página atual para refletir os novos totais imediatamente
+  if (STATE.currentPage === 'dashboard') renderDashboard();
+  if (STATE.currentPage === 'transactions') populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+  if (STATE.currentPage === 'family') renderFamily();
+  if (STATE.currentPage === 'reports') renderReports();
+}
+
+// Auto-detecção: varre as transações do período atual e mostra as que
+// parecem pagamento de fatura. Permite ao usuário confirmar e criar
+// (ou escolher) uma categoria para marcá-las em massa.
+async function autoDetectInvoicePayments() {
+  const status = document.getElementById('invoicePayStatus');
+  const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
+  if (!txs.length) {
+    status.innerHTML = '<span style="color:var(--red);">Carregue os lançamentos primeiro (abra "Lançamentos").</span>';
+    return;
+  }
+  const matches = txs.filter(function(t) {
+    // Só interessa débitos (valor negativo)
+    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+    return v < 0 && looksLikeInvoicePayment(t.description);
+  });
+  if (!matches.length) {
+    status.innerHTML = '<span style="color:var(--orange);">ℹ️ Nenhum pagamento de fatura encontrado nas descrições do período atual.</span>';
+    return;
+  }
+
+  // Mostra a prévia
+  const preview = matches.slice(0, 8).map(function(t) {
+    return '• ' + (t.description || '').substring(0, 40) + '  ' + centsToReal(Math.abs(t.amount_cents || Math.round((t.amount || 0) * 100)));
+  }).join('\n');
+  const extra = matches.length > 8 ? '\n... e mais ' + (matches.length - 8) : '';
+  const msg = '🔍 Encontrei ' + matches.length + ' lançamento' + (matches.length === 1 ? '' : 's') + ' que parece' + (matches.length === 1 ? '' : 'm') + ' pagamento de fatura:\n\n' + preview + extra + '\n\nDeseja marcá-los com uma categoria "💳 Pagamento de fatura" e excluí-los dos totais?';
+  if (!confirm(msg)) return;
+
+  // Garante que existe uma categoria "Pagamento de fatura"
+  const existing = (STATE.categories || []).find(function(c) {
+    const n = (c.name || '').toLowerCase();
+    return (!c.parent_id || c.parent_id === null) && (n === 'pagamento de fatura' || n === 'pagamento fatura' || n === 'fatura cartão' || n === 'pagamento de cartão');
+  });
+  let invoiceCat = existing;
+  if (!invoiceCat) {
+    status.innerHTML = '<span style="color:var(--text-secondary);">Criando categoria "Pagamento de fatura"...</span>';
+    try {
+      invoiceCat = await api('categories', { method: 'POST', body: { name: 'Pagamento de fatura', color: '#9E9E9E' } });
+      if (!invoiceCat || !invoiceCat.id) throw new Error('resposta inesperada');
+      STATE.categories.push(invoiceCat);
+    } catch (e) {
+      status.innerHTML = '<span style="color:var(--red);">❌ Erro ao criar categoria: ' + (e.message || 'desconhecido') + '</span>';
+      return;
+    }
+  }
+
+  // Aplica a categoria via PUT em cada lançamento
+  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + matches.length + ' lançamento' + (matches.length === 1 ? '' : 's') + '...</span>';
+  let ok = 0, fail = 0;
+  for (const tx of matches) {
+    if (tx.category_id === invoiceCat.id) { ok++; continue; }
+    try {
+      await api('transactions/' + tx.id, { method: 'PUT', body: { category_id: invoiceCat.id } });
+      tx.category_id = invoiceCat.id;
+      ok++;
+    } catch (e) {
+      console.warn('autoDetect fail', tx.id, e);
+      fail++;
+    }
+  }
+
+  // Garante que a categoria está marcada como "pagamento de fatura" nas settings
+  const idsSet = new Set(STATE.invoicePaymentCategoryIds || []);
+  idsSet.add(invoiceCat.id);
+  saveInvoicePaymentSettings(Array.from(idsSet));
+
+  // Re-renderiza o checkbox list e os totais
+  renderInvoicePayCategoryList();
+  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' lançamento' + (ok === 1 ? '' : 's') + ' marcado' + (ok === 1 ? '' : 's') + ' como "' + invoiceCat.name + '"' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '. Categoria adicionada à lista de exclusão.</span>';
 }
 
 async function saveOrgConfig() {
@@ -2582,7 +2778,10 @@ function safeSection(name, fn) {
 }
 
 function renderDashboard() {
-  const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
+  const allTxs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
+  // Ignora pagamentos de fatura em todos os totais/gráficos para evitar
+  // contagem dupla (gasto no cartão + débito da fatura em conta).
+  const txs = excludeInvoicePayments(allTxs);
   let income = 0, expense = 0;
   const catMap = {};
 
@@ -2836,6 +3035,17 @@ function populateTxTable(txs) {
   const body = document.getElementById('transactionsBody');
   updateSortIndicators();
 
+  // Contabiliza pagamentos de fatura excluídos (para mostrar no rodapé)
+  let excludedCount = 0;
+  let excludedCents = 0;
+  page.forEach(function(t) {
+    if (isInvoicePayment(t)) {
+      excludedCount++;
+      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+      excludedCents += Math.abs(v);
+    }
+  });
+
   if (page.length === 0) {
     body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
   } else {
@@ -2850,14 +3060,19 @@ function populateTxTable(txs) {
       const notesCell = notes
         ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
-      return `<tr style="cursor:pointer;" onclick="openEditTx(${t.id})" title="Clique para editar">
+      const isInvoice = isInvoicePayment(t);
+      const rowStyle = isInvoice ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
+      const invoiceBadge = isInvoice
+        ? '<span class="invoice-badge" title="Pagamento de fatura — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">💳 FATURA</span>'
+        : '';
+      return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${isInvoice ? 'Pagamento de fatura — excluído dos totais' : 'Clique para editar'}">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
-        <td>${escHtml(t.description) || '—'}</td>
+        <td>${escHtml(t.description) || '—'}${invoiceBadge}</td>
         <td>${escHtml(cat)}</td>
         <td style="font-size:13px;white-space:nowrap;"><span style="opacity:0.8;">${src.icon}</span> ${escHtml(src.label)}</td>
         <td>${notesCell}</td>
-        <td style="font-family:'Space Mono',monospace;font-weight:600;color:${val >= 0 ? 'var(--green-600)' : 'var(--red)'}">${centsToReal(val)}</td>
+        <td style="font-family:'Space Mono',monospace;font-weight:600;color:${isInvoice ? 'var(--text-muted)' : (val >= 0 ? 'var(--green-600)' : 'var(--red)')};${isInvoice ? 'text-decoration:line-through;' : ''}">${centsToReal(val)}</td>
       </tr>`;
     }).join('');
   }
@@ -2866,12 +3081,19 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Exibe o total de lançamentos (sem paginação).
+  // Exibe o total de lançamentos + (se houver) o total excluído por fatura.
   const pag = document.getElementById('txPagination');
   if (pag) {
-    pag.innerHTML = sorted.length
-      ? `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações do período</div>`
-      : '';
+    if (!sorted.length) {
+      pag.innerHTML = '';
+    } else {
+      let html = '<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ' + sorted.length + ' transações do período';
+      if (excludedCount > 0) {
+        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' por serem pagamento de fatura (' + centsToReal(excludedCents) + ')</span>';
+      }
+      html += '</div>';
+      pag.innerHTML = html;
+    }
   }
 }
 
@@ -2885,8 +3107,12 @@ function getPeriodLabel() {
 }
 
 function getTotalsFromTxs(txs) {
+  // Totais SEMPRE ignoram pagamentos de fatura (para não contar em dobro).
+  // A lista exibida continua com todas as transações — só os números
+  // agregados é que são limpos.
+  const clean = excludeInvoicePayments(txs);
   let income = 0, expense = 0;
-  txs.forEach(t => {
+  clean.forEach(t => {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
     if (v > 0) income += v;
     else expense += Math.abs(v);
@@ -4319,7 +4545,7 @@ function renderCards() {
 //  FAMILY
 // ═══════════════════════════════════════════════
 function renderFamily() {
-  const txs = STATE.transactions;
+  const txs = excludeInvoicePayments(STATE.transactions);
   const members = {alfredo: 0, esposa: 0, familia: 0};
   txs.forEach(t => {
     const val = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -4404,7 +4630,7 @@ async function renderReports() {
     const end = monthEnd(d);
     const label = d.toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
     try {
-      const txs = await fetchTransactions(start, end);
+      const txs = excludeInvoicePayments(await fetchTransactions(start, end));
       let income = 0, expense = 0;
       txs.forEach(t => {
         const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -4574,6 +4800,7 @@ if (fcC) fcC.addEventListener('keydown', function(ev){
 });
 
 loadTheme();
+loadInvoicePaymentSettings();
 checkSavedLogin();
 </script>
 </body>
