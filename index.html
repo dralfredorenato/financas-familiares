@@ -907,6 +907,7 @@ tr:hover td { background: var(--bg-card-alt); }
               <th class="sortable" data-sort-col="description" onclick="toggleTxSort('description')">Descrição <span class="sort-ind">↕</span></th>
               <th class="sortable" data-sort-col="category" onclick="toggleTxSort('category')">Categoria <span class="sort-ind">↕</span></th>
               <th class="sortable" data-sort-col="source" onclick="toggleTxSort('source')">Conta/Cartão <span class="sort-ind">↕</span></th>
+              <th class="sortable" data-sort-col="notes" onclick="toggleTxSort('notes')">Obs. <span class="sort-ind">↕</span></th>
               <th class="sortable" data-sort-col="amount" onclick="toggleTxSort('amount')">Valor <span class="sort-ind">↕</span></th>
             </tr></thead>
             <tbody id="transactionsBody"></tbody>
@@ -1147,6 +1148,12 @@ tr:hover td { background: var(--bg-card-alt); }
       <button type="button" class="btn btn-secondary btn-sm" onclick="suggestCategoryLocal()" title="Sugere categoria com base em palavras-chave (instantâneo)">🤖 Sugerir</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="suggestCategoryAI()" title="Usa IA (OpenAI) para categorizar (requer configuração)">✨ IA</button>
       <span id="editTxSuggestStatus" style="font-size:12px;color:var(--text-secondary);"></span>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <label>Observações</label>
+        <textarea id="editTxNotes" rows="3" placeholder="Notas adicionais sobre este lançamento..." style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;resize:vertical;min-height:70px;"></textarea>
+      </div>
     </div>
     <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
       <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
@@ -2587,7 +2594,13 @@ function getFilteredTransactions() {
   if (type === 'expense') txs = txs.filter(t => (t.amount_cents || t.amount * 100) < 0);
   const searchEl = document.getElementById('filterSearch');
   const search = searchEl ? searchEl.value.toLowerCase() : '';
-  if (search) txs = txs.filter(t => (t.description || '').toLowerCase().includes(search));
+  if (search) {
+    txs = txs.filter(t => {
+      const desc = (t.description || '').toLowerCase();
+      const notes = (t.notes || '').toLowerCase();
+      return desc.includes(search) || notes.includes(search);
+    });
+  }
   return txs;
 }
 
@@ -2626,6 +2639,7 @@ function sortTxs(txs) {
       case 'description': return (t.description || '').toLowerCase();
       case 'category': return ((cats.find(c => c.id === t.category_id) || {}).name || '').toLowerCase();
       case 'source': return (getTxSource(t).label || '').toLowerCase();
+      case 'notes': return (t.notes || '').toLowerCase();
       case 'amount': return t.amount_cents || Math.round((t.amount || 0) * 100);
       default: return '';
     }
@@ -2682,19 +2696,26 @@ function populateTxTable(txs) {
   updateSortIndicators();
 
   if (page.length === 0) {
-    body.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
   } else {
+    const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     body.innerHTML = page.map(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
       const src = getTxSource(t);
       const checked = STATE.selectedTxIds.has(t.id) ? 'checked' : '';
+      const notes = t.notes || '';
+      const notesEsc = escHtml(notes);
+      const notesCell = notes
+        ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
+        : '<span style="color:var(--text-muted);">—</span>';
       return `<tr style="cursor:pointer;" onclick="openEditTx(${t.id})" title="Clique para editar">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
-        <td>${t.description || '—'}</td>
-        <td>${cat}</td>
-        <td style="font-size:13px;white-space:nowrap;"><span style="opacity:0.8;">${src.icon}</span> ${src.label}</td>
+        <td>${escHtml(t.description) || '—'}</td>
+        <td>${escHtml(cat)}</td>
+        <td style="font-size:13px;white-space:nowrap;"><span style="opacity:0.8;">${src.icon}</span> ${escHtml(src.label)}</td>
+        <td>${notesCell}</td>
         <td style="font-family:'Space Mono',monospace;font-weight:600;color:${val >= 0 ? 'var(--green-600)' : 'var(--red)'}">${centsToReal(val)}</td>
       </tr>`;
     }).join('');
@@ -2791,15 +2812,16 @@ function exportPDF() {
       const src = getTxSource(t);
       return [
         fmtDate(t.date),
-        (t.description || '-').substring(0, 50),
-        cat.substring(0, 20),
-        src.label.substring(0, 20),
+        (t.description || '-').substring(0, 40),
+        cat.substring(0, 18),
+        src.label.substring(0, 18),
+        (t.notes || '').substring(0, 30),
         centsToReal(val).replace('R$', 'R$ ')
       ];
     });
 
     doc.autoTable({
-      head: [['Data', 'Descricao', 'Categoria', 'Conta/Cartao', 'Valor']],
+      head: [['Data', 'Descricao', 'Categoria', 'Conta/Cartao', 'Obs.', 'Valor']],
       body: rows,
       startY: 55,
       theme: 'striped',
@@ -2807,14 +2829,15 @@ function exportPDF() {
       bodyStyles: { fontSize: 8, textColor: 40 },
       alternateRowStyles: { fillColor: [240, 247, 240] },
       columnStyles: {
-        0: { cellWidth: 20 },
+        0: { cellWidth: 18 },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 28 },
-        4: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
+        2: { cellWidth: 26 },
+        3: { cellWidth: 24 },
+        4: { cellWidth: 28, fontStyle: 'italic', textColor: 90 },
+        5: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }
       },
       didParseCell: function(data) {
-        if (data.section === 'body' && data.column.index === 4) {
+        if (data.section === 'body' && data.column.index === 5) {
           const raw = data.cell.raw;
           if (typeof raw === 'string' && raw.indexOf('-') !== -1) {
             data.cell.styles.textColor = [198, 40, 40];
@@ -2876,7 +2899,7 @@ function exportPrint() {
     html += '<span>💸 <strong>Despesas:</strong> <span class="neg">' + centsToReal(totals.expense) + '</span></span>';
     html += '<span>📊 <strong>Saldo:</strong> <span class="' + (totals.net >= 0 ? 'pos' : 'neg') + '">' + centsToReal(totals.net) + '</span></span>';
     html += '</div>';
-    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta/Cartão</th><th class="right">Valor</th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta/Cartão</th><th>Obs.</th><th class="right">Valor</th></tr></thead><tbody>';
     txs.forEach(t => {
       const val = t.amount_cents || Math.round((t.amount || 0) * 100);
       const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '—';
@@ -2886,6 +2909,7 @@ function exportPrint() {
       html += '<td>' + esc(t.description || '—') + '</td>';
       html += '<td>' + esc(cat) + '</td>';
       html += '<td>' + src.icon + ' ' + esc(src.label) + '</td>';
+      html += '<td style="font-style:italic;color:#666;">' + esc(t.notes || '') + '</td>';
       html += '<td class="right ' + (val >= 0 ? 'pos' : 'neg') + '">' + centsToReal(val) + '</td>';
       html += '</tr>';
     });
@@ -3106,6 +3130,10 @@ function openEditTx(txId) {
   }
   catSel.value = tx.category_id || '';
 
+  // Preenche observações (pode ser null)
+  const notesEl = document.getElementById('editTxNotes');
+  if (notesEl) notesEl.value = tx.notes || '';
+
   document.getElementById('editTxSuggestStatus').textContent = '';
   document.getElementById('editTxBackdrop').classList.add('active');
 }
@@ -3181,23 +3209,41 @@ async function saveEditTransaction() {
     alert('Selecione uma categoria válida.');
     return;
   }
-  if (newCategoryId === tx.category_id) {
+  const notesEl = document.getElementById('editTxNotes');
+  const newNotes = notesEl ? notesEl.value.trim() : '';
+  const oldNotes = (tx.notes || '').trim();
+
+  const categoryChanged = newCategoryId !== tx.category_id;
+  const notesChanged = newNotes !== oldNotes;
+
+  // Nada mudou — só fecha
+  if (!categoryChanged && !notesChanged) {
     closeEditModal();
     return;
   }
+
+  // Monta o payload PUT apenas com os campos alterados
+  const payload = {};
+  if (categoryChanged) payload.category_id = newCategoryId;
+  if (notesChanged) payload.notes = newNotes || null;
+
   btn.disabled = true;
   btn.textContent = 'Salvando...';
   try {
     await api('transactions/' + tx.id, {
       method: 'PUT',
-      body: { category_id: newCategoryId }
+      body: payload
     });
     // Atualiza o STATE local (sem refetch)
-    tx.category_id = newCategoryId;
+    if (categoryChanged) tx.category_id = newCategoryId;
+    if (notesChanged) tx.notes = newNotes || null;
     // Atualiza o cache filtrado se a transação estiver lá
     if (Array.isArray(STATE.txLastFiltered)) {
       const found = STATE.txLastFiltered.find(t => t.id === tx.id);
-      if (found) found.category_id = newCategoryId;
+      if (found) {
+        if (categoryChanged) found.category_id = newCategoryId;
+        if (notesChanged) found.notes = newNotes || null;
+      }
     }
     closeEditModal();
     populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
