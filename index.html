@@ -71,6 +71,43 @@ body {
   transition: background var(--transition), color var(--transition);
 }
 
+/* ─── FLOATING ACTION BUTTON ─── */
+.fab-action-btn:hover {
+  background: var(--green-50) !important;
+}
+[data-theme="dark"] .fab-action-btn:hover {
+  background: var(--bg-card-alt) !important;
+}
+#selectionFabBtn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 14px 40px rgba(46,125,50,0.6) !important;
+}
+#selectionFabBtn:active {
+  transform: scale(0.95);
+}
+
+/* ─── SORTABLE HEADERS ─── */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+th.sortable:hover {
+  background: var(--green-100);
+}
+[data-theme="dark"] th.sortable:hover {
+  background: var(--bg-card-alt);
+}
+th.sortable .sort-ind {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.5;
+}
+th.sortable.sort-active .sort-ind {
+  opacity: 1;
+  color: var(--green-600);
+}
+
 /* ─── GLOBAL ERROR BANNER ─── */
 #__errBanner {
   position: fixed;
@@ -864,7 +901,14 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
         <div class="table-container">
           <table>
-            <thead><tr><th style="width:34px;"><input type="checkbox" id="selectAllTxs" onchange="toggleSelectAll(this.checked)" title="Selecionar todos visíveis" /></th><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta/Cartão</th><th>Valor</th></tr></thead>
+            <thead><tr>
+              <th style="width:34px;"><input type="checkbox" id="selectAllTxs" onchange="toggleSelectAll(this.checked)" title="Selecionar todos visíveis" /></th>
+              <th class="sortable" data-sort-col="date" onclick="toggleTxSort('date')">Data <span class="sort-ind">↕</span></th>
+              <th class="sortable" data-sort-col="description" onclick="toggleTxSort('description')">Descrição <span class="sort-ind">↕</span></th>
+              <th class="sortable" data-sort-col="category" onclick="toggleTxSort('category')">Categoria <span class="sort-ind">↕</span></th>
+              <th class="sortable" data-sort-col="source" onclick="toggleTxSort('source')">Conta/Cartão <span class="sort-ind">↕</span></th>
+              <th class="sortable" data-sort-col="amount" onclick="toggleTxSort('amount')">Valor <span class="sort-ind">↕</span></th>
+            </tr></thead>
             <tbody id="transactionsBody"></tbody>
           </table>
         </div>
@@ -1010,6 +1054,30 @@ tr:hover td { background: var(--bg-card-alt); }
     </div>
 
   </main>
+
+  <!-- ═══════════ FLOATING ACTION BUTTON (seleção múltipla) ═══════════ -->
+  <div id="selectionFab" style="display:none;position:fixed;bottom:24px;right:24px;z-index:500;">
+    <!-- Menu expandido -->
+    <div id="selectionFabMenu" style="display:none;position:absolute;bottom:74px;right:0;background:var(--bg-card);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,0.25);padding:6px;min-width:280px;border:1px solid var(--border);" onclick="event.stopPropagation();">
+      <button class="fab-action-btn" onclick="openBatchFixedBillsModal()" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
+        <span style="font-size:22px;">📆</span>
+        <span><strong>Adicionar aos Gastos Fixos</strong><br><span style="font-size:11px;color:var(--text-muted);">Copia os selecionados como contas fixas mensais</span></span>
+      </button>
+      <button class="fab-action-btn" onclick="bulkCategorizeSelected();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
+        <span style="font-size:22px;">🤖</span>
+        <span><strong>Categorizar selecionados</strong><br><span style="font-size:11px;color:var(--text-muted);">Aplica sugestões de IA local</span></span>
+      </button>
+      <button class="fab-action-btn" onclick="clearSelection();hideFabMenu();" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:none;border-radius:10px;color:var(--text);font-size:14px;cursor:pointer;text-align:left;font-family:'Outfit',sans-serif;">
+        <span style="font-size:22px;">✕</span>
+        <span><strong>Limpar seleção</strong></span>
+      </button>
+    </div>
+    <!-- Botão principal -->
+    <button id="selectionFabBtn" onclick="toggleFabMenu(event)" title="Ações em massa" style="position:relative;background:var(--green-600);color:#fff;border:none;border-radius:50%;width:64px;height:64px;box-shadow:0 10px 30px rgba(46,125,50,0.5);cursor:pointer;font-size:26px;transition:transform 0.2s, box-shadow 0.2s;">
+      ⚡
+      <span id="selectionFabCount" style="position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:50%;min-width:24px;height:24px;padding:0 6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);">0</span>
+    </button>
+  </div>
 </div>
 
 <!-- ═══════════ MODAL (novo lançamento) ═══════════ -->
@@ -1170,6 +1238,21 @@ tr:hover td { background: var(--bg-card-alt); }
   </div>
 </div>
 
+<!-- ═══════════ MODAL (batch: lançamentos -> gastos fixos) ═══════════ -->
+<div class="modal-backdrop" id="batchFixedBillsBackdrop" onclick="closeBatchFixedBillsModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:760px;">
+    <h3>📆 Adicionar aos Gastos Fixos</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;line-height:1.5;">Os lançamentos a seguir serão <strong>copiados</strong> para o módulo Gastos Fixos como contas mensais recorrentes. Eles <strong>não saem</strong> da tabela de Lançamentos — ficam exatamente como estavam.</p>
+    <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Você pode editar o nome, o dia do vencimento e desmarcar os que não quer criar.</p>
+    <div id="batchFixedBillsList" style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:12px;"></div>
+    <div id="batchFixedBillsStatus" style="font-size:13px;margin:8px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="closeBatchFixedBillsModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnSaveBatchFixedBills" onclick="saveBatchFixedBills()">💾 Criar contas fixas</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ FORCE CHANGE PASSWORD OVERLAY ═══════════ -->
 <div id="forceChangeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:20px;">
   <div style="background:var(--bg-card);border-radius:20px;padding:32px 28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
@@ -1229,6 +1312,7 @@ let STATE = {
   txPerPage: 25,
   txLastFiltered: [], // cache do último resultado filtrado (para paginação e exportação)
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
+  txSort: { column: 'date', direction: 'desc' }, // coluna e direção do sort da tabela de Lançamentos
   lastRefreshAt: null, // timestamp da última atualização bem-sucedida
   autoRefreshTimer: null, // handle do setInterval
   fixedBills: [], // contas/receitas fixas mensais (Supabase.fixed_bills)
@@ -1395,7 +1479,7 @@ setInterval(updateRefreshLabel, 30 * 1000);
 
 function isAnyModalOpen() {
   // Evita atropelar o usuário durante edição
-  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'forceChangeOverlay'];
+  var candidates = ['modalBackdrop', 'editTxBackdrop', 'newCategoryBackdrop', 'fixedBillBackdrop', 'batchFixedBillsBackdrop', 'forceChangeOverlay'];
   for (var i = 0; i < candidates.length; i++) {
     var el = document.getElementById(candidates[i]);
     if (!el) continue;
@@ -2530,13 +2614,72 @@ function setPerPage(v) {
   populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
 }
 
+// Ordena a lista de transações conforme STATE.txSort (imutável)
+function sortTxs(txs) {
+  const sort = STATE.txSort || { column: 'date', direction: 'desc' };
+  const col = sort.column;
+  const dir = sort.direction === 'asc' ? 1 : -1;
+  const cats = STATE.categories || [];
+  const getValue = (t) => {
+    switch (col) {
+      case 'date': return t.date || '';
+      case 'description': return (t.description || '').toLowerCase();
+      case 'category': return ((cats.find(c => c.id === t.category_id) || {}).name || '').toLowerCase();
+      case 'source': return (getTxSource(t).label || '').toLowerCase();
+      case 'amount': return t.amount_cents || Math.round((t.amount || 0) * 100);
+      default: return '';
+    }
+  };
+  return txs.slice().sort((a, b) => {
+    const va = getValue(a);
+    const vb = getValue(b);
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+}
+
+function toggleTxSort(column) {
+  const cur = STATE.txSort || { column: 'date', direction: 'desc' };
+  if (cur.column === column) {
+    // Mesma coluna: inverte direção
+    STATE.txSort = { column: column, direction: cur.direction === 'asc' ? 'desc' : 'asc' };
+  } else {
+    // Coluna nova: ascendente por padrão (exceto 'date' e 'amount' que fazem mais sentido descendente)
+    const defaultDir = (column === 'date' || column === 'amount') ? 'desc' : 'asc';
+    STATE.txSort = { column: column, direction: defaultDir };
+  }
+  STATE.txPage = 1;
+  populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
+}
+
+// Atualiza os indicadores visuais (▲/▼) nos headers
+function updateSortIndicators() {
+  const ths = document.querySelectorAll('#page-transactions thead th.sortable');
+  const cur = STATE.txSort || {};
+  ths.forEach(th => {
+    const col = th.getAttribute('data-sort-col');
+    const ind = th.querySelector('.sort-ind');
+    if (!ind) return;
+    if (col === cur.column) {
+      th.classList.add('sort-active');
+      ind.textContent = cur.direction === 'asc' ? '▲' : '▼';
+    } else {
+      th.classList.remove('sort-active');
+      ind.textContent = '↕';
+    }
+  });
+}
+
 function populateTxTable(txs) {
+  const sorted = sortTxs(txs);
   const perPage = STATE.txPerPage;
   const showAll = perPage === -1;
   const start = showAll ? 0 : (STATE.txPage - 1) * perPage;
-  const end = showAll ? txs.length : start + perPage;
-  const page = txs.slice(start, end);
+  const end = showAll ? sorted.length : start + perPage;
+  const page = sorted.slice(start, end);
   const body = document.getElementById('transactionsBody');
+  updateSortIndicators();
 
   if (page.length === 0) {
     body.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
@@ -2564,24 +2707,24 @@ function populateTxTable(txs) {
   // Pagination
   const pag = document.getElementById('txPagination');
   if (showAll) {
-    pag.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${txs.length} transações</div>`;
+    pag.innerHTML = `<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ${sorted.length} transações</div>`;
     return;
   }
-  const totalPages = Math.ceil(txs.length / perPage);
+  const totalPages = Math.ceil(sorted.length / perPage);
   if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
   // Compact pagination: primeiras 3, atual ±1, últimas 3, com "..."
   const cur = STATE.txPage;
-  const pages = new Set();
+  const pagesSet = new Set();
   [1, 2, 3, totalPages - 2, totalPages - 1, totalPages, cur - 1, cur, cur + 1].forEach(n => {
-    if (n >= 1 && n <= totalPages) pages.add(n);
+    if (n >= 1 && n <= totalPages) pagesSet.add(n);
   });
-  const sorted = [...pages].sort((a, b) => a - b);
+  const pageNums = [...pagesSet].sort((a, b) => a - b);
   let html = '';
   // Prev
   html += `<button class="btn btn-sm btn-secondary" ${cur === 1 ? 'disabled' : ''} onclick="STATE.txPage=${Math.max(1,cur-1)};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">‹</button>`;
   let prev = 0;
-  for (const p of sorted) {
+  for (const p of pageNums) {
     if (p - prev > 1) html += `<span style="padding:0 4px;color:var(--text-muted);">…</span>`;
     html += `<button class="btn btn-sm ${p === cur ? 'btn-primary' : 'btn-secondary'}" onclick="STATE.txPage=${p};populateTxTable(STATE.txLastFiltered.length?STATE.txLastFiltered:STATE.transactions)">${p}</button>`;
     prev = p;
@@ -3125,13 +3268,215 @@ function updateSelectAllCheckbox(visible) {
 function updateSelectionBar() {
   const bar = document.getElementById('selectionBar');
   const count = document.getElementById('selectionCount');
-  if (!bar || !count) return;
+  const n = STATE.selectedTxIds.size;
+  if (bar && count) {
+    if (n === 0) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = 'flex';
+      count.textContent = n + ' selecionado' + (n === 1 ? '' : 's');
+    }
+  }
+  updateSelectionFab();
+}
+
+// ═══════════════════════════════════════════════
+//  FLOATING ACTION BUTTON (FAB) para seleção múltipla
+// ═══════════════════════════════════════════════
+function updateSelectionFab() {
+  const fab = document.getElementById('selectionFab');
+  const countEl = document.getElementById('selectionFabCount');
+  if (!fab || !countEl) return;
   const n = STATE.selectedTxIds.size;
   if (n === 0) {
-    bar.style.display = 'none';
+    fab.style.display = 'none';
+    hideFabMenu();
   } else {
-    bar.style.display = 'flex';
-    count.textContent = n + ' selecionado' + (n === 1 ? '' : 's');
+    fab.style.display = 'block';
+    countEl.textContent = n;
+  }
+}
+
+function toggleFabMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('selectionFabMenu');
+  if (!menu) return;
+  const isOpen = menu.style.display === 'block';
+  menu.style.display = isOpen ? 'none' : 'block';
+}
+
+function hideFabMenu() {
+  const menu = document.getElementById('selectionFabMenu');
+  if (menu) menu.style.display = 'none';
+}
+
+// Fecha o menu ao clicar fora dele
+document.addEventListener('click', function(e) {
+  const fab = document.getElementById('selectionFab');
+  if (!fab) return;
+  if (!fab.contains(e.target)) hideFabMenu();
+});
+// Fecha com Esc
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') hideFabMenu();
+});
+
+// ═══════════════════════════════════════════════
+//  LANÇAMENTOS SELECIONADOS → GASTOS FIXOS (batch)
+// ═══════════════════════════════════════════════
+// Abre modal pré-preenchido com os lançamentos selecionados transformados
+// em rascunhos editáveis de contas fixas. Os lançamentos originais NÃO são
+// modificados — é apenas uma cópia para facilitar o cadastro.
+function openBatchFixedBillsModal() {
+  hideFabMenu();
+  const selectedIds = Array.from(STATE.selectedTxIds);
+  if (!selectedIds.length) {
+    alert('Selecione ao menos um lançamento.');
+    return;
+  }
+  const selectedTxs = STATE.transactions.filter(t => STATE.selectedTxIds.has(t.id));
+
+  APP.__batchDrafts = selectedTxs.map(function(t) {
+    const valCents = t.amount_cents || Math.round((t.amount || 0) * 100);
+    const cat = (STATE.categories.find(c => c.id === t.category_id) || {}).name || '';
+    // Extrai o dia da data ISO (YYYY-MM-DD) sem criar objeto Date (evita timezone)
+    let day = 1;
+    if (t.date && typeof t.date === 'string') {
+      const parts = t.date.split('-');
+      if (parts.length >= 3) day = parseInt(parts[2], 10) || 1;
+    }
+    return {
+      __txId: t.id,
+      __keep: true,
+      name: (t.description || 'Sem descrição').substring(0, 80),
+      amount_cents: Math.abs(valCents),
+      due_day: Math.min(31, Math.max(1, day)),
+      kind: valCents < 0 ? 'expense' : 'income',
+      category: cat,
+      notes: null
+    };
+  });
+  renderBatchFixedBillsList();
+  document.getElementById('batchFixedBillsStatus').textContent = '';
+  document.getElementById('batchFixedBillsBackdrop').classList.add('active');
+}
+
+function renderBatchFixedBillsList() {
+  const container = document.getElementById('batchFixedBillsList');
+  if (!container) return;
+  const drafts = APP.__batchDrafts || [];
+  if (!drafts.length) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">📭</div>Nenhum rascunho</div>';
+    return;
+  }
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<thead><tr style="background:var(--bg-card-alt);position:sticky;top:0;">';
+  html += '<th style="padding:10px 6px;width:32px;text-align:center;"><input type="checkbox" id="batchSelectAll" checked onchange="toggleBatchSelectAll(this.checked)" /></th>';
+  html += '<th style="padding:10px 6px;text-align:left;">Nome</th>';
+  html += '<th style="padding:10px 6px;text-align:center;width:60px;">Dia</th>';
+  html += '<th style="padding:10px 6px;text-align:right;width:110px;">Valor</th>';
+  html += '<th style="padding:10px 6px;text-align:center;width:50px;">Tipo</th>';
+  html += '</tr></thead><tbody>';
+  drafts.forEach(function(d, i) {
+    const typeIcon = d.kind === 'expense' ? '💸' : '💰';
+    const color = d.kind === 'expense' ? 'var(--red)' : 'var(--green-600)';
+    const opacity = d.__keep ? '1' : '0.4';
+    html += '<tr style="border-bottom:1px solid var(--border);opacity:' + opacity + ';">';
+    html += '<td style="padding:8px 6px;text-align:center;"><input type="checkbox" ' + (d.__keep ? 'checked' : '') + ' onchange="toggleBatchDraft(' + i + ', this.checked)"/></td>';
+    html += '<td style="padding:8px 6px;"><input type="text" value="' + esc(d.name) + '" oninput="updateBatchDraft(' + i + ', \'name\', this.value)" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:13px;font-family:\'Outfit\',sans-serif;" /></td>';
+    html += '<td style="padding:8px 6px;text-align:center;"><input type="number" min="1" max="31" value="' + d.due_day + '" oninput="updateBatchDraft(' + i + ', \'due_day\', parseInt(this.value,10))" style="width:52px;padding:6px 4px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:13px;text-align:center;" /></td>';
+    html += '<td style="padding:8px 6px;text-align:right;font-family:\'Space Mono\',monospace;color:' + color + ';font-weight:600;">' + centsToReal(d.amount_cents) + '</td>';
+    html += '<td style="padding:8px 6px;text-align:center;font-size:18px;" title="' + d.kind + '">' + typeIcon + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function toggleBatchDraft(index, keep) {
+  if (APP.__batchDrafts && APP.__batchDrafts[index]) {
+    APP.__batchDrafts[index].__keep = !!keep;
+    renderBatchFixedBillsList();
+  }
+}
+
+function toggleBatchSelectAll(checked) {
+  if (!APP.__batchDrafts) return;
+  APP.__batchDrafts.forEach(function(d) { d.__keep = !!checked; });
+  renderBatchFixedBillsList();
+}
+
+function updateBatchDraft(index, field, value) {
+  if (APP.__batchDrafts && APP.__batchDrafts[index]) {
+    APP.__batchDrafts[index][field] = value;
+  }
+}
+
+function closeBatchFixedBillsModal(e) {
+  if (e && e.target !== document.getElementById('batchFixedBillsBackdrop')) return;
+  document.getElementById('batchFixedBillsBackdrop').classList.remove('active');
+  APP.__batchDrafts = null;
+}
+
+async function saveBatchFixedBills() {
+  const allDrafts = APP.__batchDrafts || [];
+  const drafts = allDrafts.filter(d => d.__keep);
+  const status = document.getElementById('batchFixedBillsStatus');
+  const btn = document.getElementById('btnSaveBatchFixedBills');
+  if (!drafts.length) {
+    status.innerHTML = '<span style="color:var(--red);">Marque ao menos uma conta para criar.</span>';
+    return;
+  }
+  if (!SB) {
+    status.innerHTML = '<span style="color:var(--red);">Supabase indisponível.</span>';
+    return;
+  }
+  // Valida
+  for (const d of drafts) {
+    if (!d.name || !d.name.trim()) {
+      status.innerHTML = '<span style="color:var(--red);">Todos os itens precisam ter nome.</span>';
+      return;
+    }
+    if (isNaN(d.due_day) || d.due_day < 1 || d.due_day > 31) {
+      status.innerHTML = '<span style="color:var(--red);">Dia do vencimento deve ser entre 1 e 31.</span>';
+      return;
+    }
+  }
+  btn.disabled = true;
+  btn.textContent = 'Criando...';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Criando ' + drafts.length + ' conta' + (drafts.length === 1 ? '' : 's') + '...</span>';
+
+  const rows = drafts.map(function(d) {
+    return {
+      name: d.name.trim(),
+      amount_cents: d.amount_cents,
+      due_day: d.due_day,
+      kind: d.kind,
+      category: d.category || null,
+      notes: d.notes || null,
+      created_by: (APP.__user && APP.__user.id) || null
+    };
+  });
+
+  try {
+    const { error } = await SB.from('fixed_bills').insert(rows);
+    if (error) throw error;
+    status.innerHTML = '<span style="color:var(--green-600);">✅ ' + rows.length + ' conta' + (rows.length === 1 ? '' : 's') + ' criada' + (rows.length === 1 ? '' : 's') + '!</span>';
+    // Recarrega a lista de contas fixas
+    await loadFixedBills();
+    setTimeout(function() {
+      document.getElementById('batchFixedBillsBackdrop').classList.remove('active');
+      APP.__batchDrafts = null;
+      btn.disabled = false;
+      btn.textContent = '💾 Criar contas fixas';
+      // Não limpa a seleção — o usuário pode querer fazer outra ação
+    }, 1200);
+  } catch (e) {
+    showError('saveBatchFixedBills', e);
+    status.innerHTML = '<span style="color:var(--red);">❌ ' + (e.message || 'Erro') + '</span>';
+    btn.disabled = false;
+    btn.textContent = '💾 Criar contas fixas';
   }
 }
 
