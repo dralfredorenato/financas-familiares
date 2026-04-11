@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Família Metzger - Gestão Financeira</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1189,70 +1190,102 @@ async function loadAll() {
 }
 
 // ═══════════════════════════════════════════════
-//  APP LOGIN (email + senha)
+//  SUPABASE AUTH CLIENT
+// ═══════════════════════════════════════════════
+const SUPABASE_URL = 'https://xzayhcysxleshrntqdup.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_4AbKW5meho_uW1LzGCY98g_k5v6Ffg-';
+var SB = null;
+var __recoveryMode = false;
+
+try {
+  if (typeof supabase !== 'undefined' && supabase.createClient) {
+    SB = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'implicit'
+      }
+    });
+    // Escuta eventos de auth; PASSWORD_RECOVERY dispara quando o usuário
+    // abre o link de recuperação recebido por e-mail.
+    SB.auth.onAuthStateChange(function(event, session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        __recoveryMode = true;
+        showResetBox();
+      }
+    });
+  } else {
+    showError('supabase-init', new Error('supabase-js não carregou. Verifique sua conexão.'));
+  }
+} catch (e) {
+  showError('supabase-init', e);
+}
+
+// ═══════════════════════════════════════════════
+//  APP LOGIN (email + senha via Supabase Auth)
 // ═══════════════════════════════════════════════
 async function doLogin() {
   var email = document.getElementById('loginEmail').value.trim();
   var password = document.getElementById('loginPassword').value;
   var btn = document.getElementById('btnLogin');
   if (!email || !password) { setLoginStatus('Preencha e-mail e senha.'); return; }
+  if (!SB) { setLoginStatus('Cliente Supabase não inicializado.'); return; }
   setLoginStatus('Autenticando...');
   if (btn) btn.disabled = true;
 
-  var data = null;
-  // --- 1. AUTH contra /api/auth ---
   try {
-    var r = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email, password: password })
-    });
-    var text = await r.text();
-    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
-    if (!r.ok) {
-      var msg;
-      if (r.status === 401) {
-        msg = (data && data.error) || 'E-mail ou senha incorretos.';
-      } else if (r.status === 503) {
-        msg = (data && data.error) || 'Serviço indisponível.';
-      } else {
-        msg = (data && data.error) || ('Falha ' + r.status);
-      }
+    var result = await SB.auth.signInWithPassword({ email: email, password: password });
+    if (result.error) {
+      var msg = result.error.message || 'Falha na autenticação';
+      if (/invalid login credentials/i.test(msg)) msg = 'E-mail ou senha incorretos.';
+      else if (/email not confirmed/i.test(msg)) msg = 'E-mail ainda não confirmado.';
       setLoginStatus(msg);
       if (btn) btn.disabled = false;
       return;
     }
-    localStorage.setItem('app_authed', '1');
-    localStorage.setItem('app_email', email);
-    APP.email = email;
-    // Guarda a senha em memória para o caso de precisar chamar /api/change-password
-    APP.__currentPassword = password;
+    var user = result.data && result.data.user;
+    if (!user) {
+      setLoginStatus('Resposta inválida do servidor.');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    APP.email = user.email;
+    APP.__user = user;
+    localStorage.setItem('app_email', user.email);
   } catch (e) {
-    console.error('[AUTH] erro de rede:', e);
-    setLoginStatus('Erro de rede: ' + (e && e.message ? e.message : 'desconhecido'));
-    showError('login-fetch', e);
+    console.error('[AUTH] erro:', e);
+    setLoginStatus('Erro: ' + (e && e.message ? e.message : 'desconhecido'));
+    showError('login', e);
     if (btn) btn.disabled = false;
     return;
   }
 
-  // --- 2. Mostrar app shell ---
+  if (btn) btn.disabled = false;
+
+  // Mostrar app shell
   try {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').classList.add('active');
     setLoginStatus('');
   } catch (e) { showError('showApp', e); }
 
-  if (btn) btn.disabled = false;
-
-  // --- 3. Se precisa trocar a senha (primeiro acesso), mostra overlay ---
-  if (data && data.mustChangePassword) {
-    APP.__kvConfigured = data.kvConfigured !== false;
+  // Se o usuário precisa trocar a senha (primeiro acesso com #123456), força a troca
+  var mustChange = getMustChangePassword();
+  if (mustChange) {
     showForceChange();
     return;
   }
 
-  // --- 4. Decide destino normal: dashboard ou settings ---
   await continueAfterLogin();
+}
+
+function getMustChangePassword() {
+  try {
+    var s = SB && SB.auth && typeof SB.auth.getUser === 'function';
+    // Usamos o user do currentSession sincrono via localStorage cache
+    return !!(APP.__user && APP.__user.user_metadata && APP.__user.user_metadata.must_change_password);
+  } catch (_) { return false; }
 }
 
 async function continueAfterLogin() {
@@ -1276,7 +1309,7 @@ async function continueAfterLogin() {
 }
 
 // ═══════════════════════════════════════════════
-//  FORGOT PASSWORD
+//  FORGOT PASSWORD (via Supabase)
 // ═══════════════════════════════════════════════
 function showForgotPassword() {
   document.getElementById('loginBoxMain').style.display = 'none';
@@ -1298,45 +1331,41 @@ async function submitForgotPassword() {
   var status = document.getElementById('forgotStatus');
   var btn = document.getElementById('btnForgot');
   if (!email) { status.textContent = 'Informe o e-mail.'; return; }
+  if (!SB) { status.textContent = 'Cliente Supabase não inicializado.'; return; }
   status.textContent = 'Enviando...';
   if (btn) btn.disabled = true;
   try {
-    var r = await fetch('/api/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email })
-    });
-    var text = await r.text();
-    var data = null;
-    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
-    if (r.ok) {
-      status.innerHTML = '<span style="color:#A5D6A7;">✅ Se o e-mail estiver cadastrado, você receberá um link de recuperação em instantes. Verifique também a pasta de spam.</span>';
+    var redirectTo = window.location.origin + window.location.pathname;
+    var result = await SB.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+    if (result.error) {
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + (result.error.message || 'Falha') + '</span>';
     } else {
-      var msg = (data && data.error) || ('Falha ' + r.status);
-      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + msg + '</span>';
+      status.innerHTML = '<span style="color:#A5D6A7;">✅ Se o e-mail estiver cadastrado, você receberá um link em instantes. Verifique também a pasta de spam.</span>';
     }
   } catch (e) {
-    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro de rede: ' + (e.message || 'desconhecido') + '</span>';
+    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 // ═══════════════════════════════════════════════
-//  RESET PASSWORD (via token recebido por e-mail)
+//  RESET PASSWORD (após clicar no link do e-mail)
+//  Supabase detecta o token no hash da URL e dispara
+//  onAuthStateChange('PASSWORD_RECOVERY'); showResetBox é chamado.
 // ═══════════════════════════════════════════════
-function handleResetToken() {
-  var params = new URLSearchParams(window.location.search);
-  var token = params.get('reset');
-  if (!token) return false;
-  window.__resetToken = token;
+function showResetBox() {
   var main = document.getElementById('loginBoxMain');
   var forgot = document.getElementById('loginBoxForgot');
   var reset = document.getElementById('loginBoxReset');
+  var loginScreen = document.getElementById('loginScreen');
+  var app = document.getElementById('app');
+  // Garante que a tela de login está visível e o app não
+  if (app) app.classList.remove('active');
+  if (loginScreen) loginScreen.style.display = '';
   if (main) main.style.display = 'none';
   if (forgot) forgot.style.display = 'none';
   if (reset) reset.style.display = '';
-  return true;
 }
 
 async function submitResetPassword() {
@@ -1344,41 +1373,38 @@ async function submitResetPassword() {
   var c = document.getElementById('resetConfirmPass').value;
   var status = document.getElementById('resetStatus');
   var btn = document.getElementById('btnReset');
-  var token = window.__resetToken;
-  if (!token) { status.textContent = 'Token ausente na URL.'; return; }
+  if (!SB) { status.textContent = 'Cliente Supabase não inicializado.'; return; }
   if (!n || n.length < 6) { status.textContent = 'A senha deve ter pelo menos 6 caracteres.'; return; }
   if (n !== c) { status.textContent = 'As senhas não conferem.'; return; }
   if (n === '#123456') { status.textContent = 'Escolha uma senha diferente da padrão.'; return; }
   status.textContent = 'Redefinindo...';
   if (btn) btn.disabled = true;
   try {
-    var r = await fetch('/api/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token, newPassword: n })
+    var result = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
     });
-    var text = await r.text();
-    var data = null;
-    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
-    if (r.ok) {
-      status.innerHTML = '<span style="color:#A5D6A7;">✅ Senha redefinida! Redirecionando para o login...</span>';
-      setTimeout(function() {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        window.__resetToken = null;
-        document.getElementById('loginBoxReset').style.display = 'none';
-        document.getElementById('loginBoxMain').style.display = '';
-        if (data && data.email) {
-          document.getElementById('loginEmail').value = data.email;
-          document.getElementById('loginPassword').focus();
-        }
-      }, 1500);
-    } else {
-      var msg = (data && data.error) || ('Falha ' + r.status);
-      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + msg + '</span>';
+    if (result.error) {
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + (result.error.message || 'Falha') + '</span>';
+      if (btn) btn.disabled = false;
+      return;
     }
+    status.innerHTML = '<span style="color:#A5D6A7;">✅ Senha redefinida! Redirecionando...</span>';
+    setTimeout(async function() {
+      await SB.auth.signOut();
+      // Remove o hash do URL e volta à tela de login
+      window.history.replaceState({}, document.title, window.location.pathname);
+      __recoveryMode = false;
+      document.getElementById('loginBoxReset').style.display = 'none';
+      document.getElementById('loginBoxMain').style.display = '';
+      var emailEl = document.getElementById('loginEmail');
+      if (emailEl && result.data && result.data.user && result.data.user.email) {
+        emailEl.value = result.data.user.email;
+      }
+      document.getElementById('loginPassword').focus();
+    }, 1500);
   } catch (e) {
     status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
-  } finally {
     if (btn) btn.disabled = false;
   }
 }
@@ -1391,12 +1417,7 @@ function showForceChange() {
   if (overlay) overlay.style.display = 'flex';
   document.getElementById('forceNewPass').value = '';
   document.getElementById('forceConfirmPass').value = '';
-  var status = document.getElementById('forceChangeStatus');
-  if (APP.__kvConfigured === false) {
-    status.innerHTML = '<span style="color:var(--orange);">⚠️ Vercel KV não configurado — a troca de senha não vai persistir. Entre em Configurações → Banco de Dados para configurar.</span>';
-  } else {
-    status.textContent = '';
-  }
+  document.getElementById('forceChangeStatus').textContent = '';
 }
 
 function hideForceChange() {
@@ -1409,93 +1430,86 @@ async function submitForceChange() {
   var c = document.getElementById('forceConfirmPass').value;
   var status = document.getElementById('forceChangeStatus');
   var btn = document.getElementById('btnForceChange');
+  if (!SB) { status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não inicializado.</span>'; return; }
   if (!n || n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A senha deve ter pelo menos 6 caracteres.</span>'; return; }
   if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
   if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
   status.innerHTML = '<span style="color:var(--text-secondary);">Salvando...</span>';
   if (btn) btn.disabled = true;
   try {
-    var r = await fetch('/api/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: APP.email,
-        currentPassword: APP.__currentPassword,
-        newPassword: n
-      })
+    var result = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
     });
-    var text = await r.text();
-    var data = null;
-    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
-    if (r.ok) {
-      APP.__currentPassword = n;
-      status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
-      setTimeout(async function() {
-        hideForceChange();
-        await continueAfterLogin();
-      }, 800);
-    } else {
-      var msg = (data && data.error) || ('Falha ' + r.status);
-      status.innerHTML = '<span style="color:var(--red);">❌ ' + msg + '</span>';
+    if (result.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + (result.error.message || 'Falha') + '</span>';
+      if (btn) btn.disabled = false;
+      return;
     }
+    // Atualiza user local
+    if (result.data && result.data.user) APP.__user = result.data.user;
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+    setTimeout(async function() {
+      hideForceChange();
+      await continueAfterLogin();
+    }, 800);
   } catch (e) {
     status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
-  } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 // ═══════════════════════════════════════════════
 //  CHANGE PASSWORD (pela página Configurações)
+//  Verifica a senha atual re-autenticando e depois atualiza.
 // ═══════════════════════════════════════════════
 async function submitChangePassword() {
   var cur = document.getElementById('changePassCurrent').value;
   var n = document.getElementById('changePassNew').value;
   var c = document.getElementById('changePassConfirm').value;
   var status = document.getElementById('changePassStatus');
+  if (!SB) { status.innerHTML = '<span style="color:var(--red);">Cliente Supabase não inicializado.</span>'; return; }
   if (!cur || !n || !c) { status.innerHTML = '<span style="color:var(--red);">Preencha todos os campos.</span>'; return; }
   if (n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ter pelo menos 6 caracteres.</span>'; return; }
   if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
   if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
   if (n === cur) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ser diferente da atual.</span>'; return; }
-  status.innerHTML = '<span style="color:var(--text-secondary);">Salvando...</span>';
+  status.innerHTML = '<span style="color:var(--text-secondary);">Verificando senha atual...</span>';
   try {
-    var r = await fetch('/api/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: APP.email,
-        currentPassword: cur,
-        newPassword: n
-      })
-    });
-    var text = await r.text();
-    var data = null;
-    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
-    if (r.ok) {
-      APP.__currentPassword = n;
-      status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
-      document.getElementById('changePassCurrent').value = '';
-      document.getElementById('changePassNew').value = '';
-      document.getElementById('changePassConfirm').value = '';
-    } else {
-      var msg = (data && data.error) || ('Falha ' + r.status);
-      status.innerHTML = '<span style="color:var(--red);">❌ ' + msg + '</span>';
+    // Re-autentica para validar a senha atual
+    var check = await SB.auth.signInWithPassword({ email: APP.email, password: cur });
+    if (check.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ Senha atual incorreta.</span>';
+      return;
     }
+    status.innerHTML = '<span style="color:var(--text-secondary);">Salvando nova senha...</span>';
+    var update = await SB.auth.updateUser({
+      password: n,
+      data: { must_change_password: false }
+    });
+    if (update.error) {
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + (update.error.message || 'Falha') + '</span>';
+      return;
+    }
+    status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+    document.getElementById('changePassCurrent').value = '';
+    document.getElementById('changePassNew').value = '';
+    document.getElementById('changePassConfirm').value = '';
   } catch (e) {
     status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
   }
 }
 
-function doLogout() {
+async function doLogout() {
+  try { if (SB) await SB.auth.signOut(); } catch (e) { console.warn('signOut error', e); }
   APP.email = '';
+  APP.__user = null;
   STATE.accounts = [];
   STATE.categories = [];
   STATE.transactions = [];
   STATE.creditCards = [];
   STATE.budgets = [];
   STATE.invoices = {};
-  localStorage.removeItem('app_authed');
   // Nota: credenciais do Organizze são preservadas (mais conveniente).
   // Use "Limpar credenciais" em Configurações para removê-las.
   document.getElementById('app').classList.remove('active');
@@ -1506,23 +1520,41 @@ function doLogout() {
 }
 
 async function checkSavedLogin() {
-  // Se a URL tem um token de reset, o usuário precisa resetar a senha primeiro.
-  // Não pulamos a tela de login para que o box de reset seja exibido.
-  if (window.__resetToken) return;
-
-  var authed = localStorage.getItem('app_authed');
+  if (!SB) return;
+  // Se a URL tem hash de recuperação, deixa a tela de login para o usuário
+  // digitar a nova senha. O evento PASSWORD_RECOVERY vai disparar showResetBox.
+  if (window.location.hash && window.location.hash.indexOf('type=recovery') !== -1) {
+    return;
+  }
   var savedEmail = localStorage.getItem('app_email');
   if (savedEmail) {
     var el = document.getElementById('loginEmail');
     if (el) el.value = savedEmail;
   }
-  if (authed !== '1') return;
-  // Já autenticado no app: pula a tela de login direto para o app shell.
-  APP.email = savedEmail || '';
+  try {
+    var sess = await SB.auth.getSession();
+    var session = sess && sess.data && sess.data.session;
+    if (!session || !session.user) return;
+    if (__recoveryMode) return;  // link de reset
+    APP.email = session.user.email;
+    APP.__user = session.user;
+    localStorage.setItem('app_email', session.user.email);
+  } catch (e) {
+    showError('checkSavedLogin:getSession', e);
+    return;
+  }
+
+  // Já autenticado: mostra o app shell
   try {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').classList.add('active');
   } catch (e) { showError('checkSavedLogin:showApp', e); return; }
+
+  // Ainda precisa trocar a senha?
+  if (getMustChangePassword()) {
+    showForceChange();
+    return;
+  }
 
   var creds = getOrgCreds();
   if (!creds.email || !creds.token) {
@@ -2274,7 +2306,6 @@ if (fcC) fcC.addEventListener('keydown', function(ev){
 });
 
 loadTheme();
-handleResetToken();
 checkSavedLogin();
 </script>
 </body>
