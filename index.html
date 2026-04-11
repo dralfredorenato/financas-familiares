@@ -702,7 +702,8 @@ tr:hover td { background: var(--bg-card-alt); }
 
 <!-- ═══════════ LOGIN ═══════════ -->
 <div class="login-screen" id="loginScreen">
-  <div class="login-box">
+  <!-- Box principal de login -->
+  <div class="login-box" id="loginBoxMain">
     <div class="emoji-logo">🌿</div>
     <h1>Família Metzger</h1>
     <p class="subtitle">Gestão Financeira · Organizze</p>
@@ -718,6 +719,42 @@ tr:hover td { background: var(--bg-card-alt); }
 
     <div id="loginStatus" style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:12px;min-height:18px;"></div>
     <button class="btn-login" id="btnLogin" onclick="doLogin()">Entrar</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" onclick="showForgotPassword();return false;" style="color:rgba(255,255,255,0.85);font-size:13px;text-decoration:none;border-bottom:1px dashed rgba(255,255,255,0.4);">🔑 Esqueci minha senha</a>
+    </div>
+  </div>
+
+  <!-- Box de "esqueci senha" -->
+  <div class="login-box" id="loginBoxForgot" style="display:none;">
+    <div class="emoji-logo">🔑</div>
+    <h1>Recuperar senha</h1>
+    <p class="subtitle">Digite seu e-mail para receber um link</p>
+    <div class="form-group">
+      <label>📧 E-mail</label>
+      <input type="email" id="forgotEmail" placeholder="seu@email.com" autocomplete="email" />
+    </div>
+    <div id="forgotStatus" style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:12px;min-height:36px;"></div>
+    <button class="btn-login" id="btnForgot" onclick="submitForgotPassword()">📨 Enviar link</button>
+    <div style="text-align:center;margin-top:14px;">
+      <a href="#" onclick="hideForgotPassword();return false;" style="color:rgba(255,255,255,0.85);font-size:13px;text-decoration:none;">← Voltar ao login</a>
+    </div>
+  </div>
+
+  <!-- Box de reset (quando URL tem ?reset=TOKEN) -->
+  <div class="login-box" id="loginBoxReset" style="display:none;">
+    <div class="emoji-logo">🔒</div>
+    <h1>Nova senha</h1>
+    <p class="subtitle">Defina uma nova senha para sua conta</p>
+    <div class="form-group">
+      <label>🔒 Nova senha (mín. 6 caracteres)</label>
+      <input type="password" id="resetNewPass" autocomplete="new-password" />
+    </div>
+    <div class="form-group">
+      <label>🔒 Confirmar nova senha</label>
+      <input type="password" id="resetConfirmPass" autocomplete="new-password" />
+    </div>
+    <div id="resetStatus" style="font-size:12px;color:rgba(255,255,255,0.85);margin-bottom:12px;min-height:36px;"></div>
+    <button class="btn-login" id="btnReset" onclick="submitResetPassword()">Redefinir senha</button>
   </div>
 </div>
 
@@ -901,6 +938,27 @@ tr:hover td { background: var(--bg-card-alt); }
           </div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header"><span class="card-title">🔒 Trocar senha do app</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px;">Defina uma nova senha para entrar no app. A senha é independente do Organizze.</p>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Senha atual</label>
+            <input type="password" id="changePassCurrent" autocomplete="current-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Nova senha (mínimo 6 caracteres)</label>
+            <input type="password" id="changePassNew" autocomplete="new-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Confirmar nova senha</label>
+            <input type="password" id="changePassConfirm" autocomplete="new-password" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;" />
+          </div>
+          <div id="changePassStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <button class="btn btn-primary" onclick="submitChangePassword()">💾 Salvar nova senha</button>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -936,6 +994,25 @@ tr:hover td { background: var(--bg-card-alt); }
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="btnSaveTx" onclick="saveTransaction()">💾 Salvar</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ FORCE CHANGE PASSWORD OVERLAY ═══════════ -->
+<div id="forceChangeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--bg-card);border-radius:20px;padding:32px 28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div style="text-align:center;font-size:52px;margin-bottom:8px;">🔐</div>
+    <h2 style="text-align:center;color:var(--text);margin-bottom:8px;font-size:22px;">Troque sua senha</h2>
+    <p style="text-align:center;color:var(--text-secondary);margin-bottom:22px;font-size:14px;line-height:1.5;">Por segurança, defina uma senha pessoal antes de continuar.<br><span style="font-size:12px;opacity:0.7;">(Você entrou com a senha padrão)</span></p>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px;font-weight:500;">Nova senha (mínimo 6 caracteres)</label>
+      <input type="password" id="forceNewPass" autocomplete="new-password" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;" />
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px;font-weight:500;">Confirmar nova senha</label>
+      <input type="password" id="forceConfirmPass" autocomplete="new-password" style="width:100%;padding:13px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;" />
+    </div>
+    <div id="forceChangeStatus" style="font-size:13px;margin:12px 0;min-height:20px;"></div>
+    <button class="btn btn-primary" id="btnForceChange" style="width:100%;padding:14px;font-size:15px;" onclick="submitForceChange()">💾 Salvar nova senha</button>
   </div>
 </div>
 
@@ -1122,6 +1199,7 @@ async function doLogin() {
   setLoginStatus('Autenticando...');
   if (btn) btn.disabled = true;
 
+  var data = null;
   // --- 1. AUTH contra /api/auth ---
   try {
     var r = await fetch('/api/auth', {
@@ -1130,14 +1208,13 @@ async function doLogin() {
       body: JSON.stringify({ email: email, password: password })
     });
     var text = await r.text();
-    var data = null;
     if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
     if (!r.ok) {
       var msg;
-      if (r.status === 503) {
-        msg = (data && data.error) || 'Servidor sem APP_PASSWORD configurado.';
-      } else if (r.status === 401) {
-        msg = 'E-mail ou senha incorretos.';
+      if (r.status === 401) {
+        msg = (data && data.error) || 'E-mail ou senha incorretos.';
+      } else if (r.status === 503) {
+        msg = (data && data.error) || 'Serviço indisponível.';
       } else {
         msg = (data && data.error) || ('Falha ' + r.status);
       }
@@ -1148,6 +1225,8 @@ async function doLogin() {
     localStorage.setItem('app_authed', '1');
     localStorage.setItem('app_email', email);
     APP.email = email;
+    // Guarda a senha em memória para o caso de precisar chamar /api/change-password
+    APP.__currentPassword = password;
   } catch (e) {
     console.error('[AUTH] erro de rede:', e);
     setLoginStatus('Erro de rede: ' + (e && e.message ? e.message : 'desconhecido'));
@@ -1163,35 +1242,249 @@ async function doLogin() {
     setLoginStatus('');
   } catch (e) { showError('showApp', e); }
 
-  // --- 3. Decidir destino: tem Organizze configurado? ---
+  if (btn) btn.disabled = false;
+
+  // --- 3. Se precisa trocar a senha (primeiro acesso), mostra overlay ---
+  if (data && data.mustChangePassword) {
+    APP.__kvConfigured = data.kvConfigured !== false;
+    showForceChange();
+    return;
+  }
+
+  // --- 4. Decide destino normal: dashboard ou settings ---
+  await continueAfterLogin();
+}
+
+async function continueAfterLogin() {
   var creds = getOrgCreds();
   if (!creds.email || !creds.token) {
-    // Primeiro login (ou credenciais limpas): manda pra Configurações
     try {
       renderPage('settings');
       var s = document.getElementById('orgConfigStatus');
       if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso ao Organizze para começar.</span>';
     } catch (e) { showError('renderPage(settings)', e); }
-    if (btn) btn.disabled = false;
     return;
   }
-
-  // --- 4. Tem credenciais do Organizze: carrega dados e vai pro dashboard ---
-  try {
-    await loadAll();
-  } catch (e) { showError('loadAll', e); }
-
-  try {
-    renderPage('dashboard');
-  } catch (e) {
+  try { await loadAll(); } catch (e) { showError('loadAll', e); }
+  try { renderPage('dashboard'); } catch (e) {
     showError('renderPage(dashboard)', e);
     try {
       var ds = document.getElementById('dashStats');
       if (ds) ds.innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><div>Falha ao renderizar dashboard. Veja o banner vermelho no topo.</div></div>';
     } catch (_) {}
   }
+}
 
-  if (btn) btn.disabled = false;
+// ═══════════════════════════════════════════════
+//  FORGOT PASSWORD
+// ═══════════════════════════════════════════════
+function showForgotPassword() {
+  document.getElementById('loginBoxMain').style.display = 'none';
+  document.getElementById('loginBoxForgot').style.display = '';
+  var e = document.getElementById('forgotEmail');
+  var src = document.getElementById('loginEmail');
+  if (e && src && src.value) e.value = src.value;
+  document.getElementById('forgotStatus').textContent = '';
+}
+
+function hideForgotPassword() {
+  document.getElementById('loginBoxForgot').style.display = 'none';
+  document.getElementById('loginBoxMain').style.display = '';
+  document.getElementById('forgotStatus').textContent = '';
+}
+
+async function submitForgotPassword() {
+  var email = document.getElementById('forgotEmail').value.trim();
+  var status = document.getElementById('forgotStatus');
+  var btn = document.getElementById('btnForgot');
+  if (!email) { status.textContent = 'Informe o e-mail.'; return; }
+  status.textContent = 'Enviando...';
+  if (btn) btn.disabled = true;
+  try {
+    var r = await fetch('/api/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    });
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      status.innerHTML = '<span style="color:#A5D6A7;">✅ Se o e-mail estiver cadastrado, você receberá um link de recuperação em instantes. Verifique também a pasta de spam.</span>';
+    } else {
+      var msg = (data && data.error) || ('Falha ' + r.status);
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + msg + '</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro de rede: ' + (e.message || 'desconhecido') + '</span>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RESET PASSWORD (via token recebido por e-mail)
+// ═══════════════════════════════════════════════
+function handleResetToken() {
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('reset');
+  if (!token) return false;
+  window.__resetToken = token;
+  var main = document.getElementById('loginBoxMain');
+  var forgot = document.getElementById('loginBoxForgot');
+  var reset = document.getElementById('loginBoxReset');
+  if (main) main.style.display = 'none';
+  if (forgot) forgot.style.display = 'none';
+  if (reset) reset.style.display = '';
+  return true;
+}
+
+async function submitResetPassword() {
+  var n = document.getElementById('resetNewPass').value;
+  var c = document.getElementById('resetConfirmPass').value;
+  var status = document.getElementById('resetStatus');
+  var btn = document.getElementById('btnReset');
+  var token = window.__resetToken;
+  if (!token) { status.textContent = 'Token ausente na URL.'; return; }
+  if (!n || n.length < 6) { status.textContent = 'A senha deve ter pelo menos 6 caracteres.'; return; }
+  if (n !== c) { status.textContent = 'As senhas não conferem.'; return; }
+  if (n === '#123456') { status.textContent = 'Escolha uma senha diferente da padrão.'; return; }
+  status.textContent = 'Redefinindo...';
+  if (btn) btn.disabled = true;
+  try {
+    var r = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token, newPassword: n })
+    });
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      status.innerHTML = '<span style="color:#A5D6A7;">✅ Senha redefinida! Redirecionando para o login...</span>';
+      setTimeout(function() {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        window.__resetToken = null;
+        document.getElementById('loginBoxReset').style.display = 'none';
+        document.getElementById('loginBoxMain').style.display = '';
+        if (data && data.email) {
+          document.getElementById('loginEmail').value = data.email;
+          document.getElementById('loginPassword').focus();
+        }
+      }, 1500);
+    } else {
+      var msg = (data && data.error) || ('Falha ' + r.status);
+      status.innerHTML = '<span style="color:#FFCDD2;">❌ ' + msg + '</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:#FFCDD2;">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  FORCE CHANGE PASSWORD (primeiro login com #123456)
+// ═══════════════════════════════════════════════
+function showForceChange() {
+  var overlay = document.getElementById('forceChangeOverlay');
+  if (overlay) overlay.style.display = 'flex';
+  document.getElementById('forceNewPass').value = '';
+  document.getElementById('forceConfirmPass').value = '';
+  var status = document.getElementById('forceChangeStatus');
+  if (APP.__kvConfigured === false) {
+    status.innerHTML = '<span style="color:var(--orange);">⚠️ Vercel KV não configurado — a troca de senha não vai persistir. Entre em Configurações → Banco de Dados para configurar.</span>';
+  } else {
+    status.textContent = '';
+  }
+}
+
+function hideForceChange() {
+  var overlay = document.getElementById('forceChangeOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function submitForceChange() {
+  var n = document.getElementById('forceNewPass').value;
+  var c = document.getElementById('forceConfirmPass').value;
+  var status = document.getElementById('forceChangeStatus');
+  var btn = document.getElementById('btnForceChange');
+  if (!n || n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A senha deve ter pelo menos 6 caracteres.</span>'; return; }
+  if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
+  if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
+  status.innerHTML = '<span style="color:var(--text-secondary);">Salvando...</span>';
+  if (btn) btn.disabled = true;
+  try {
+    var r = await fetch('/api/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: APP.email,
+        currentPassword: APP.__currentPassword,
+        newPassword: n
+      })
+    });
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      APP.__currentPassword = n;
+      status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+      setTimeout(async function() {
+        hideForceChange();
+        await continueAfterLogin();
+      }, 800);
+    } else {
+      var msg = (data && data.error) || ('Falha ' + r.status);
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + msg + '</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  CHANGE PASSWORD (pela página Configurações)
+// ═══════════════════════════════════════════════
+async function submitChangePassword() {
+  var cur = document.getElementById('changePassCurrent').value;
+  var n = document.getElementById('changePassNew').value;
+  var c = document.getElementById('changePassConfirm').value;
+  var status = document.getElementById('changePassStatus');
+  if (!cur || !n || !c) { status.innerHTML = '<span style="color:var(--red);">Preencha todos os campos.</span>'; return; }
+  if (n.length < 6) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ter pelo menos 6 caracteres.</span>'; return; }
+  if (n !== c) { status.innerHTML = '<span style="color:var(--red);">As senhas não conferem.</span>'; return; }
+  if (n === '#123456') { status.innerHTML = '<span style="color:var(--red);">Escolha uma senha diferente da padrão.</span>'; return; }
+  if (n === cur) { status.innerHTML = '<span style="color:var(--red);">A nova senha deve ser diferente da atual.</span>'; return; }
+  status.innerHTML = '<span style="color:var(--text-secondary);">Salvando...</span>';
+  try {
+    var r = await fetch('/api/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: APP.email,
+        currentPassword: cur,
+        newPassword: n
+      })
+    });
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      APP.__currentPassword = n;
+      status.innerHTML = '<span style="color:var(--green-600);">✅ Senha alterada com sucesso!</span>';
+      document.getElementById('changePassCurrent').value = '';
+      document.getElementById('changePassNew').value = '';
+      document.getElementById('changePassConfirm').value = '';
+    } else {
+      var msg = (data && data.error) || ('Falha ' + r.status);
+      status.innerHTML = '<span style="color:var(--red);">❌ ' + msg + '</span>';
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro: ' + (e.message || 'desconhecido') + '</span>';
+  }
 }
 
 function doLogout() {
@@ -1213,6 +1506,10 @@ function doLogout() {
 }
 
 async function checkSavedLogin() {
+  // Se a URL tem um token de reset, o usuário precisa resetar a senha primeiro.
+  // Não pulamos a tela de login para que o box de reset seja exibido.
+  if (window.__resetToken) return;
+
   var authed = localStorage.getItem('app_authed');
   var savedEmail = localStorage.getItem('app_email');
   if (savedEmail) {
@@ -1960,8 +2257,24 @@ document.addEventListener('keydown', e => {
     if (ev.key === 'Enter') doLogin();
   });
 });
+// Enter no e-mail de recuperação dispara o envio
+var fgE = document.getElementById('forgotEmail');
+if (fgE) fgE.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitForgotPassword();
+});
+// Enter no campo de confirmar reset dispara o reset
+var rsC = document.getElementById('resetConfirmPass');
+if (rsC) rsC.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitResetPassword();
+});
+// Enter no campo de confirmar troca obrigatória
+var fcC = document.getElementById('forceConfirmPass');
+if (fcC) fcC.addEventListener('keydown', function(ev){
+  if (ev.key === 'Enter') submitForceChange();
+});
 
 loadTheme();
+handleResetToken();
 checkSavedLogin();
 </script>
 </body>
