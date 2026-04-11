@@ -695,6 +695,10 @@ tr:hover td { background: var(--bg-card-alt); }
 .chart-box { position: relative; height: 300px; }
 @media (max-width: 768px) { .chart-box { height: 250px; } }
 
+@media (max-width: 768px) {
+  #txCategoryChartWrap > div:last-child { grid-template-columns: 1fr !important; }
+}
+
 /* ─── TAB BUTTONS ─── */
 .tab-group { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
 .tab-btn {
@@ -903,6 +907,16 @@ tr:hover td { background: var(--bg-card-alt); }
             <div id="txSummaryCount" style="font-size:18px;font-weight:700;color:var(--text);margin-top:2px;">0</div>
           </div>
         </div>
+        <div id="txCategoryChartWrap" style="display:none;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-weight:600;color:var(--text);">🍕 Gastos por categoria do período</span>
+            <span id="txCategoryChartHint" style="font-size:11px;color:var(--text-muted);">clique nas legendas para filtrar</span>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:stretch;">
+            <div style="height:260px;min-height:220px;"><canvas id="txCategoryChart"></canvas></div>
+            <div id="txCategoryChartList" style="font-size:13px;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
+        </div>
         <div id="selectionBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--green-50);border-left:4px solid var(--green-600);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
           <span id="selectionCount" style="font-weight:600;color:var(--green-800);">0 selecionado(s)</span>
           <button class="btn btn-primary btn-sm" onclick="bulkCategorizeSelected()">🏷️ Categorizar selecionados</button>
@@ -1108,23 +1122,27 @@ tr:hover td { background: var(--bg-card-alt); }
 
       <div class="card" style="margin-top:20px;">
         <div class="card-header">
-          <span class="card-title">💳 Pagamentos de fatura (não contar em dobro)</span>
+          <span class="card-title">🚫 Categorias ignoradas nos totais</span>
         </div>
         <div style="padding: 8px 4px 4px;">
           <p style="color: var(--text-secondary); margin-bottom: 10px;line-height:1.5;">
-            Quando você paga a fatura do cartão, o débito aparece no extrato como despesa <strong>além</strong> dos gastos já lançados pelo cartão — isso duplica o total. Marque aqui as categorias que você usa para pagamentos de fatura e o app passa a <strong>ignorá-las</strong> nos totais, gráficos, Saúde Financeira, Família, Relatórios e exportações.
+            Alguns lançamentos <strong>não devem entrar</strong> no cálculo de receitas/despesas para evitar contagem dupla. Os dois casos mais comuns são:
           </p>
+          <ul style="color: var(--text-secondary); margin: 0 0 10px 18px; padding: 0; font-size: 13px; line-height: 1.6;">
+            <li><strong>💳 Pagamento de fatura de cartão</strong> — os gastos já foram lançados pelo cartão; quando a fatura é debitada em conta, contar de novo duplica o total.</li>
+            <li><strong>🔁 Transferência entre contas suas</strong> — passar dinheiro de uma conta para outra (ex: Bradesco → Unicred) aparece como débito em uma e crédito na outra, mas não é despesa nem receita real.</li>
+          </ul>
           <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 14px;line-height:1.5;">
-            As transações continuam aparecendo na lista de Lançamentos, só que com o selo <em>💳 Fatura — não contabilizado</em> e opacidade reduzida. Você também verá o total excluído no rodapé da lista.
+            Marque aqui as categorias que representam esses casos. O app passa a <strong>ignorá-las</strong> nos totais do Dashboard, Lançamentos, Relatórios, Família, Saúde Financeira e exportações. As transações continuam aparecendo na lista de Lançamentos com selo <em>🚫 NÃO CONTA</em>, opacidade reduzida e valor riscado.
           </p>
           <div class="form-group" style="margin-bottom: 14px;">
-            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Categorias consideradas "pagamento de fatura"</label>
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Categorias ignoradas</label>
             <div id="invoicePayCatList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding:10px 12px;border:1px solid var(--border);background:var(--bg-input);border-radius:10px;"></div>
           </div>
           <div id="invoicePayStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
           <div style="display:flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-primary" onclick="saveInvoicePayCategories()">💾 Salvar seleção</button>
-            <button class="btn btn-secondary" onclick="autoDetectInvoicePayments()" title="Procura descrições típicas como 'PAG FATURA', 'PAGTO CARTÃO NUBANK', etc.">🔍 Detectar automaticamente</button>
+            <button class="btn btn-secondary" onclick="autoDetectInvoicePayments()" title="Encontra pagamentos de fatura e transferências entre contas nas descrições dos lançamentos">🔍 Detectar automaticamente</button>
           </div>
         </div>
       </div>
@@ -1585,6 +1603,32 @@ function looksLikeInvoicePayment(description) {
     /boleto\s*cart[aã]o/
   ];
   return patterns.some(function(re) { return re.test(d); });
+}
+
+// Heurística para transferência entre contas próprias. Evita pegar PIX/TED
+// avulsos para terceiros — só casa padrões explícitos de "transferência
+// entre contas" ou movimentações entre bancos conhecidos do usuário.
+function looksLikeTransfer(description) {
+  if (!description) return false;
+  const d = description.toLowerCase();
+  const patterns = [
+    /transfer[eê]ncia\s*entre\s*contas/,
+    /transf\.?\s*entre\s*contas/,
+    /transfer[eê]ncia\s*(enviada|recebida|interna)/,
+    /transf\.?\s*(enviada|recebida|interna)/,
+    /movimenta[cç][aã]o\s*(entre|interna)/,
+    /aplic[aã]ç[aã]o\s*autom[aá]tica/,     // aplicação automática entre conta corrente e poupança
+    /resgate\s*autom[aá]tico/,              // resgate automático
+    /débito\s*poupan[cç]a.*corrente/,
+    /cr[eé]dito\s*poupan[cç]a.*corrente/
+  ];
+  return patterns.some(function(re) { return re.test(d); });
+}
+
+// Heurística combinada — reconhece fatura OU transferência. Usada pelo
+// auto-detect para decidir se o lançamento deve ser ignorado.
+function looksLikeExcluded(description) {
+  return looksLikeInvoicePayment(description) || looksLikeTransfer(description);
 }
 
 function monthsAgo(n) {
@@ -2596,6 +2640,23 @@ function saveInvoicePayCategories() {
 // Auto-detecção: varre as transações do período atual e mostra as que
 // parecem pagamento de fatura. Permite ao usuário confirmar e criar
 // (ou escolher) uma categoria para marcá-las em massa.
+// Encontra (ou cria) uma categoria no Organizze a partir de uma lista de
+// nomes candidatos (case-insensitive). Se nenhum bater, cria uma nova com
+// o primeiro nome da lista. Usada pelo auto-detect.
+async function _findOrCreateCategory(candidates, color) {
+  const cats = STATE.categories || [];
+  const lowers = candidates.map(function(n) { return n.toLowerCase(); });
+  const existing = cats.find(function(c) {
+    const n = (c.name || '').toLowerCase();
+    return (!c.parent_id || c.parent_id === null) && lowers.indexOf(n) !== -1;
+  });
+  if (existing) return existing;
+  const created = await api('categories', { method: 'POST', body: { name: candidates[0], color: color || '#9E9E9E' } });
+  if (!created || !created.id) throw new Error('resposta inesperada ao criar categoria');
+  STATE.categories.push(created);
+  return created;
+}
+
 async function autoDetectInvoicePayments() {
   const status = document.getElementById('invoicePayStatus');
   const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
@@ -2603,65 +2664,98 @@ async function autoDetectInvoicePayments() {
     status.innerHTML = '<span style="color:var(--red);">Carregue os lançamentos primeiro (abra "Lançamentos").</span>';
     return;
   }
-  const matches = txs.filter(function(t) {
-    // Só interessa débitos (valor negativo)
+  // Classifica cada tx em um dos dois buckets.
+  const invoiceMatches = [];
+  const transferMatches = [];
+  txs.forEach(function(t) {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
-    return v < 0 && looksLikeInvoicePayment(t.description);
+    if (looksLikeInvoicePayment(t.description)) {
+      // Pagamento de fatura: só débitos fazem sentido
+      if (v < 0) invoiceMatches.push(t);
+    } else if (looksLikeTransfer(t.description)) {
+      // Transferência: pode ser débito OU crédito (as duas pontas)
+      transferMatches.push(t);
+    }
   });
-  if (!matches.length) {
-    status.innerHTML = '<span style="color:var(--orange);">ℹ️ Nenhum pagamento de fatura encontrado nas descrições do período atual.</span>';
+
+  const totalMatches = invoiceMatches.length + transferMatches.length;
+  if (!totalMatches) {
+    status.innerHTML = '<span style="color:var(--orange);">ℹ️ Nenhum pagamento de fatura ou transferência entre contas encontrado nas descrições do período atual.</span>';
     return;
   }
 
-  // Mostra a prévia
-  const preview = matches.slice(0, 8).map(function(t) {
+  // Monta prévia combinada para o confirm
+  const fmtLine = function(t) {
     return '• ' + (t.description || '').substring(0, 40) + '  ' + centsToReal(Math.abs(t.amount_cents || Math.round((t.amount || 0) * 100)));
-  }).join('\n');
-  const extra = matches.length > 8 ? '\n... e mais ' + (matches.length - 8) : '';
-  const msg = '🔍 Encontrei ' + matches.length + ' lançamento' + (matches.length === 1 ? '' : 's') + ' que parece' + (matches.length === 1 ? '' : 'm') + ' pagamento de fatura:\n\n' + preview + extra + '\n\nDeseja marcá-los com uma categoria "💳 Pagamento de fatura" e excluí-los dos totais?';
+  };
+  let preview = '';
+  if (invoiceMatches.length) {
+    preview += '💳 Pagamento de fatura (' + invoiceMatches.length + '):\n' + invoiceMatches.slice(0, 5).map(fmtLine).join('\n');
+    if (invoiceMatches.length > 5) preview += '\n... e mais ' + (invoiceMatches.length - 5);
+    preview += '\n\n';
+  }
+  if (transferMatches.length) {
+    preview += '🔁 Transferência entre contas (' + transferMatches.length + '):\n' + transferMatches.slice(0, 5).map(fmtLine).join('\n');
+    if (transferMatches.length > 5) preview += '\n... e mais ' + (transferMatches.length - 5);
+    preview += '\n\n';
+  }
+  const msg = '🔍 Encontrei ' + totalMatches + ' lançamento' + (totalMatches === 1 ? '' : 's') + ' para ignorar nos totais:\n\n' + preview + 'Deseja marcá-los com as categorias apropriadas e excluí-los dos totais?';
   if (!confirm(msg)) return;
 
-  // Garante que existe uma categoria "Pagamento de fatura"
-  const existing = (STATE.categories || []).find(function(c) {
-    const n = (c.name || '').toLowerCase();
-    return (!c.parent_id || c.parent_id === null) && (n === 'pagamento de fatura' || n === 'pagamento fatura' || n === 'fatura cartão' || n === 'pagamento de cartão');
-  });
-  let invoiceCat = existing;
-  if (!invoiceCat) {
-    status.innerHTML = '<span style="color:var(--text-secondary);">Criando categoria "Pagamento de fatura"...</span>';
-    try {
-      invoiceCat = await api('categories', { method: 'POST', body: { name: 'Pagamento de fatura', color: '#9E9E9E' } });
-      if (!invoiceCat || !invoiceCat.id) throw new Error('resposta inesperada');
-      STATE.categories.push(invoiceCat);
-    } catch (e) {
-      status.innerHTML = '<span style="color:var(--red);">❌ Erro ao criar categoria: ' + (e.message || 'desconhecido') + '</span>';
-      return;
+  // Resolve/cria as categorias necessárias
+  status.innerHTML = '<span style="color:var(--text-secondary);">Preparando categorias no Organizze...</span>';
+  let invoiceCat = null;
+  let transferCat = null;
+  try {
+    if (invoiceMatches.length) {
+      invoiceCat = await _findOrCreateCategory(
+        ['Pagamento de fatura', 'Pagamento fatura', 'Fatura cartão', 'Pagamento de cartão'],
+        '#9E9E9E'
+      );
     }
+    if (transferMatches.length) {
+      transferCat = await _findOrCreateCategory(
+        ['Transferência entre contas', 'Transferencia entre contas', 'Transferência', 'Transferencia'],
+        '#78909C'
+      );
+    }
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--red);">❌ Erro ao criar categoria: ' + (e.message || 'desconhecido') + '</span>';
+    return;
   }
 
-  // Aplica a categoria via PUT em cada lançamento
-  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + matches.length + ' lançamento' + (matches.length === 1 ? '' : 's') + '...</span>';
+  // Aplica categoria a cada lançamento via PUT
+  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + totalMatches + ' lançamento' + (totalMatches === 1 ? '' : 's') + '...</span>';
   let ok = 0, fail = 0;
-  for (const tx of matches) {
-    if (tx.category_id === invoiceCat.id) { ok++; continue; }
+  const assignments = [];
+  if (invoiceCat) invoiceMatches.forEach(function(t) { assignments.push({ tx: t, cat: invoiceCat }); });
+  if (transferCat) transferMatches.forEach(function(t) { assignments.push({ tx: t, cat: transferCat }); });
+
+  for (const a of assignments) {
+    if (a.tx.category_id === a.cat.id) { ok++; continue; }
     try {
-      await api('transactions/' + tx.id, { method: 'PUT', body: { category_id: invoiceCat.id } });
-      tx.category_id = invoiceCat.id;
+      await api('transactions/' + a.tx.id, { method: 'PUT', body: { category_id: a.cat.id } });
+      a.tx.category_id = a.cat.id;
       ok++;
     } catch (e) {
-      console.warn('autoDetect fail', tx.id, e);
+      console.warn('autoDetect fail', a.tx.id, e);
       fail++;
     }
   }
 
-  // Garante que a categoria está marcada como "pagamento de fatura" nas settings
+  // Adiciona as categorias usadas na lista de exclusão
   const idsSet = new Set(STATE.invoicePaymentCategoryIds || []);
-  idsSet.add(invoiceCat.id);
+  if (invoiceCat) idsSet.add(invoiceCat.id);
+  if (transferCat) idsSet.add(transferCat.id);
   saveInvoicePaymentSettings(Array.from(idsSet));
 
   // Re-renderiza o checkbox list e os totais
   renderInvoicePayCategoryList();
-  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' lançamento' + (ok === 1 ? '' : 's') + ' marcado' + (ok === 1 ? '' : 's') + ' como "' + invoiceCat.name + '"' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '. Categoria adicionada à lista de exclusão.</span>';
+
+  const parts = [];
+  if (invoiceCat && invoiceMatches.length) parts.push(invoiceMatches.length + ' fatura');
+  if (transferCat && transferMatches.length) parts.push(transferMatches.length + ' transferência' + (transferMatches.length === 1 ? '' : 's'));
+  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' lançamento' + (ok === 1 ? '' : 's') + ' marcado' + (ok === 1 ? '' : 's') + ' (' + parts.join(' + ') + ')' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '. Categorias adicionadas à lista de exclusão.</span>';
 }
 
 async function saveOrgConfig() {
@@ -3055,6 +3149,7 @@ function updateTxSummaryBar(txs) {
   const list = Array.isArray(txs) ? txs : [];
   if (!list.length) {
     bar.style.display = 'none';
+    renderTxCategoryChart([]);
     return;
   }
   const totals = getTotalsFromTxs(list);
@@ -3065,6 +3160,98 @@ function updateTxSummaryBar(txs) {
   netEl.style.color = totals.net >= 0 ? 'var(--green-600)' : 'var(--red)';
   document.getElementById('txSummaryCount').textContent = String(list.length);
   bar.style.display = 'flex';
+  // Atualiza o gráfico de pizza por categoria do período
+  renderTxCategoryChart(list);
+}
+
+// Renderiza o gráfico de pizza de gastos por categoria na aba Lançamentos.
+// Considera apenas o período já filtrado (STATE.txLastFiltered), ignora
+// receitas e transações excluídas (fatura/transferência), e lista as
+// categorias ao lado com valor e percentual.
+// Paleta pensada para dar contraste entre fatias adjacentes (até 14 cores;
+// depois reusa).
+const TX_CAT_CHART_COLORS = [
+  '#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#C62828', '#00838F',
+  '#4E342E', '#F9A825', '#AD1457', '#00695C', '#EF6C00', '#283593',
+  '#558B2F', '#4527A0'
+];
+
+function renderTxCategoryChart(txs) {
+  const wrap = document.getElementById('txCategoryChartWrap');
+  const canvas = document.getElementById('txCategoryChart');
+  const listEl = document.getElementById('txCategoryChartList');
+  if (!wrap || !canvas || !listEl) return;
+
+  // Só considera DESPESAS (valor < 0), ignorando pagamentos de fatura e
+  // transferências (excludeInvoicePayments já cuida disso).
+  const clean = excludeInvoicePayments(Array.isArray(txs) ? txs : []);
+  const catMap = {};
+  clean.forEach(function(t) {
+    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
+    if (v < 0) {
+      const catName = (STATE.categories.find(function(c) { return c.id === t.category_id; }) || {}).name || 'Outros';
+      catMap[catName] = (catMap[catName] || 0) + Math.abs(v);
+    }
+  });
+
+  const entries = Object.entries(catMap).sort(function(a, b) { return b[1] - a[1]; });
+  if (!entries.length) {
+    wrap.style.display = 'none';
+    if (CHARTS.txCategory) { try { CHARTS.txCategory.destroy(); } catch (_) {} delete CHARTS.txCategory; }
+    return;
+  }
+
+  wrap.style.display = 'block';
+  const labels = entries.map(function(e) { return e[0]; });
+  const values = entries.map(function(e) { return e[1] / 100; });
+  const colors = labels.map(function(_, i) { return TX_CAT_CHART_COLORS[i % TX_CAT_CHART_COLORS.length]; });
+
+  // (Re)cria o chart
+  if (CHARTS.txCategory) { try { CHARTS.txCategory.destroy(); } catch (_) {} }
+  try {
+    const ctx = canvas.getContext('2d');
+    const theme = typeof getChartTheme === 'function' ? getChartTheme() : { textColor: '#333' };
+    CHARTS.txCategory = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: labels,
+        datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: 'var(--bg-card)' }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },  // a lista ao lado já mostra as categorias
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const val = ctx.parsed;
+                const total = ctx.dataset.data.reduce(function(s, v) { return s + v; }, 0);
+                const pct = total > 0 ? (val / total * 100).toFixed(1) : 0;
+                return ctx.label + ': ' + val.toLocaleString('pt-BR', { style:'currency', currency:'BRL' }) + ' (' + pct + '%)';
+              }
+            }
+          }
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('renderTxCategoryChart', e);
+  }
+
+  // Monta a lista lateral com cor + nome + valor + %
+  const totalCents = entries.reduce(function(s, e) { return s + e[1]; }, 0);
+  const escHtml = function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  listEl.innerHTML = entries.map(function(e, i) {
+    const color = TX_CAT_CHART_COLORS[i % TX_CAT_CHART_COLORS.length];
+    const pct = totalCents > 0 ? (e[1] / totalCents * 100).toFixed(1) : '0.0';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--bg-input);">'
+      + '<span style="width:12px;height:12px;border-radius:3px;background:' + color + ';flex-shrink:0;"></span>'
+      + '<span style="flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escHtml(e[0]) + '">' + escHtml(e[0]) + '</span>'
+      + '<span style="font-family:\'Space Mono\',monospace;font-weight:600;color:var(--red);">' + centsToReal(e[1]) + '</span>'
+      + '<span style="color:var(--text-muted);font-size:11px;min-width:40px;text-align:right;">' + pct + '%</span>'
+      + '</div>';
+  }).join('');
 }
 
 function populateTxTable(txs) {
@@ -3102,19 +3289,26 @@ function populateTxTable(txs) {
       const notesCell = notes
         ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
-      const isInvoice = isInvoicePayment(t);
-      const rowStyle = isInvoice ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
-      const invoiceBadge = isInvoice
-        ? '<span class="invoice-badge" title="Pagamento de fatura — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">💳 FATURA</span>'
-        : '';
-      return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${isInvoice ? 'Pagamento de fatura — excluído dos totais' : 'Clique para editar'}">
+      const isExcluded = isInvoicePayment(t);
+      const rowStyle = isExcluded ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
+      // Escolhe ícone/label do selo a partir do nome da categoria: fatura → 💳,
+      // transferência → 🔁, qualquer outra categoria excluída → 🚫.
+      let badgeHtml = '';
+      if (isExcluded) {
+        const catLow = (cat || '').toLowerCase();
+        let emoji = '🚫', label = 'NÃO CONTA';
+        if (catLow.indexOf('fatura') !== -1 || catLow.indexOf('cart') !== -1) { emoji = '💳'; label = 'FATURA'; }
+        else if (catLow.indexOf('transfer') !== -1 || catLow.indexOf('transf') !== -1) { emoji = '🔁'; label = 'TRANSF'; }
+        badgeHtml = '<span class="invoice-badge" title="' + label + ' — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">' + emoji + ' ' + label + '</span>';
+      }
+      return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${isExcluded ? 'Não conta nos totais — categoria excluída via Settings' : 'Clique para editar'}">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
-        <td>${escHtml(t.description) || '—'}${invoiceBadge}</td>
+        <td>${escHtml(t.description) || '—'}${badgeHtml}</td>
         <td>${escHtml(cat)}</td>
         <td style="font-size:13px;white-space:nowrap;"><span style="opacity:0.8;">${src.icon}</span> ${escHtml(src.label)}</td>
         <td>${notesCell}</td>
-        <td style="font-family:'Space Mono',monospace;font-weight:600;color:${isInvoice ? 'var(--text-muted)' : (val >= 0 ? 'var(--green-600)' : 'var(--red)')};${isInvoice ? 'text-decoration:line-through;' : ''}">${centsToReal(val)}</td>
+        <td style="font-family:'Space Mono',monospace;font-weight:600;color:${isExcluded ? 'var(--text-muted)' : (val >= 0 ? 'var(--green-600)' : 'var(--red)')};${isExcluded ? 'text-decoration:line-through;' : ''}">${centsToReal(val)}</td>
       </tr>`;
     }).join('');
   }
@@ -3131,7 +3325,7 @@ function populateTxTable(txs) {
     } else {
       let html = '<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ' + sorted.length + ' transações do período';
       if (excludedCount > 0) {
-        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' por serem pagamento de fatura (' + centsToReal(excludedCents) + ')</span>';
+        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' dos totais (fatura/transferência — ' + centsToReal(excludedCents) + ')</span>';
       }
       html += '</div>';
       pag.innerHTML = html;
