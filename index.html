@@ -1137,7 +1137,28 @@ tr:hover td { background: var(--bg-card-alt); }
 
     <!-- ═══ SETTINGS ═══ -->
     <div class="page" id="page-settings">
-      <div class="card">
+
+      <!-- ── Chave comutadora de backend ── -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><span class="card-title">🔀 Fonte de dados bancários</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px; line-height:1.5;">
+            Escolha de onde o app busca seus lançamentos, contas e categorias. Só um backend fica ativo por vez.
+          </p>
+          <div id="backendToggle" style="display:flex;gap:0;border:2px solid var(--border);border-radius:12px;overflow:hidden;max-width:400px;">
+            <button id="btnBackendOrg" onclick="switchBackend('organizze')" style="flex:1;padding:12px 16px;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;">
+              Organizze
+            </button>
+            <button id="btnBackendPluggy" onclick="switchBackend('pluggy')" style="flex:1;padding:12px 16px;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;">
+              Pluggy
+            </button>
+          </div>
+          <div id="backendStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px;min-height:16px;"></div>
+        </div>
+      </div>
+
+      <!-- ── Config Organizze ── -->
+      <div id="settingsOrganizze" class="card">
         <div class="card-header"><span class="card-title">🔗 Conexão com o Organizze</span></div>
         <div style="padding: 8px 4px 4px;">
           <p style="color: var(--text-secondary); margin-bottom: 14px;">Para o app buscar seus dados, ele precisa do seu e-mail e do token da API do Organizze.</p>
@@ -1159,6 +1180,43 @@ tr:hover td { background: var(--bg-card-alt); }
           <div style="display:flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-primary" onclick="saveOrgConfig()">💾 Salvar e conectar</button>
             <button class="btn btn-secondary" onclick="clearOrgConfig()">🗑️ Limpar credenciais</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Config Pluggy ── -->
+      <div id="settingsPluggy" class="card" style="margin-top:20px;display:none;">
+        <div class="card-header"><span class="card-title">🔌 Conexão com o Pluggy</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px; line-height:1.5;">
+            O Pluggy conecta diretamente com seus bancos via Open Finance Brasil.<br>
+            Insira suas credenciais do <a href="https://meu.pluggy.ai" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">meu.pluggy.ai</a> e depois conecte seus bancos.
+          </p>
+          <div style="background: var(--blue-light); border-left: 4px solid var(--blue); padding: 14px 16px; border-radius: 8px; margin: 0 0 16px; font-size: 14px; line-height: 1.5;">
+            <strong>Como obter suas credenciais do Pluggy:</strong><br>
+            1. Acesse <a href="https://meu.pluggy.ai" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">meu.pluggy.ai</a> e faça login<br>
+            2. Vá em <strong>Configurações &gt; Chaves de API</strong><br>
+            3. Copie o <strong>Client ID</strong> e o <strong>Client Secret</strong><br>
+            4. Cole abaixo e clique em "Salvar credenciais"
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client ID</label>
+            <input type="text" id="pluggyClientIdInput" placeholder="Cole seu Client ID aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client Secret</label>
+            <input type="password" id="pluggyClientSecretInput" placeholder="Cole seu Client Secret aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div id="pluggyConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px;">
+            <button class="btn btn-primary" onclick="savePluggyConfig()">💾 Salvar credenciais</button>
+            <button class="btn btn-secondary" onclick="clearPluggyConfig()">🗑️ Limpar credenciais</button>
+          </div>
+          <hr style="margin:0 0 18px;border:none;border-top:1px solid var(--border);" />
+          <p style="color: var(--text-secondary); margin-bottom: 10px; font-weight: 600;">🏦 Bancos conectados</p>
+          <div id="pluggyItemsList" style="margin-bottom: 14px; min-height: 30px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="btnPluggyConnect" onclick="openPluggyConnect()">➕ Conectar banco</button>
           </div>
         </div>
       </div>
@@ -1527,12 +1585,266 @@ let STATE = {
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   txSort: { column: 'date', direction: 'desc' }, // coluna e direção do sort da tabela de Lançamentos
   lastRefreshAt: null, // timestamp da última atualização bem-sucedida
-  autoRefreshTimer: null, // handle do setInterval
+  autoRefreshTimer: null, // handle do setTimeout
   fixedBills: [], // contas/receitas fixas mensais (Supabase.fixed_bills)
   fixedBillsLoadedAt: null,
   reportMonths: 6,
   manuallyExcludedTxIds: new Set(), // IDs de lançamentos manualmente excluídos do cálculo geral (localStorage)
+  backend: 'organizze', // 'organizze' | 'pluggy' — backend ativo para dados bancários
+  pluggyItemIds: [], // IDs de conexões (Items) no Pluggy
 };
+
+// ─── Backend ativo (Organizze ou Pluggy) ──────────────────────────
+function getActiveBackend() {
+  return localStorage.getItem('active_backend') || 'organizze';
+}
+function setActiveBackend(backend) {
+  STATE.backend = backend;
+  localStorage.setItem('active_backend', backend);
+}
+
+// ─── Credenciais Pluggy ───────────────────────────────────────────
+function getPluggyCreds() {
+  return {
+    clientId: localStorage.getItem('pluggy_client_id') || '',
+    clientSecret: localStorage.getItem('pluggy_client_secret') || ''
+  };
+}
+function savePluggyCreds(clientId, clientSecret) {
+  localStorage.setItem('pluggy_client_id', clientId);
+  localStorage.setItem('pluggy_client_secret', clientSecret);
+}
+function getPluggyItemIds() {
+  try {
+    var raw = localStorage.getItem('pluggy_item_ids');
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) { return []; }
+}
+function savePluggyItemIds(ids) {
+  STATE.pluggyItemIds = ids;
+  localStorage.setItem('pluggy_item_ids', JSON.stringify(ids));
+}
+
+// ─── API Pluggy (via proxy-pluggy.js) ─────────────────────────────
+async function apiPluggy(endpoint, options) {
+  if (!options) options = {};
+  var creds = getPluggyCreds();
+  if (!creds.clientId || !creds.clientSecret) {
+    var err = new Error('Pluggy não configurado. Vá em Configurações para conectar.');
+    err.status = 0;
+    err.code = 'NO_PLUGGY_CREDS';
+    throw err;
+  }
+  var clean = String(endpoint).replace(/^\/+/, '');
+  var url = '/api/proxy-pluggy?endpoint=' + encodeURIComponent(clean);
+  var fetchOpts = {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Pluggy-Client-Id': creds.clientId,
+      'X-Pluggy-Client-Secret': creds.clientSecret
+    }
+  };
+  if (options.body !== undefined && options.body !== null) {
+    fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
+  // Retry com backoff (reusa a mesma lógica do api())
+  var maxRetries = options._noRetry ? 0 : 3;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      var delay = Math.min(2000 * Math.pow(2, attempt - 1), 16000);
+      console.warn('[apiPluggy] retry ' + attempt + '/' + maxRetries + ' em ' + delay + 'ms — ' + clean);
+      await _sleep(delay);
+    }
+    try {
+      var r = await fetch(url, fetchOpts);
+    } catch (netErr) {
+      lastErr = netErr;
+      lastErr.status = 0;
+      continue;
+    }
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      _apiConsecutiveErrors = 0;
+      return data;
+    }
+    var reason = '';
+    if (data && typeof data === 'object') {
+      reason = data.error || data.message || data.errors || '';
+      if (typeof reason === 'object') reason = JSON.stringify(reason);
+    } else if (typeof data === 'string') { reason = data; }
+    lastErr = new Error('Pluggy API ' + r.status + (reason ? ': ' + reason : ''));
+    lastErr.status = r.status;
+    lastErr.data = data;
+    var retryable = r.status === 429 || r.status >= 500;
+    if (!retryable) break;
+  }
+  _apiConsecutiveErrors++;
+  throw lastErr;
+}
+
+// ─── Adaptador Pluggy → formato interno ───────────────────────────
+// Converte respostas da API Pluggy para o mesmo formato que o Organizze
+// usa internamente, permitindo que Dashboard/Lançamentos/Relatórios
+// funcionem sem alterações.
+
+function pluggyAdaptAccount(pa) {
+  // Pluggy account → formato interno (compatível com Organizze)
+  return {
+    id: pa.id,
+    name: pa.name || pa.marketingName || 'Conta',
+    type: pa.type === 'CREDIT' ? 'credit_card' : 'checking',
+    current_balance: pa.balance || 0,
+    _pluggy: true,
+    _raw: pa
+  };
+}
+
+function pluggyAdaptTransaction(pt) {
+  // Pluggy amount: positivo = entrada, mas type indica DEBIT/CREDIT.
+  // No formato interno: positivo = receita, negativo = despesa.
+  var amountFloat = pt.amount || 0;
+  if (pt.type === 'DEBIT' && amountFloat > 0) amountFloat = -amountFloat;
+  if (pt.type === 'CREDIT' && amountFloat < 0) amountFloat = -amountFloat;
+  var amountCents = Math.round(amountFloat * 100);
+  // Data: Pluggy envia ISO (2021-04-12T00:00:00.000Z), interno usa YYYY-MM-DD
+  var dateStr = pt.date ? pt.date.substring(0, 10) : '';
+  return {
+    id: pt.id,
+    description: pt.description || pt.descriptionRaw || '',
+    date: dateStr,
+    amount: amountFloat,
+    amount_cents: amountCents,
+    category_id: pt.categoryId || null,
+    category_name: pt.category || '',
+    account_id: pt.accountId || '',
+    notes: pt.descriptionRaw || '',
+    _pluggy: true,
+    _raw: pt
+  };
+}
+
+function pluggyAdaptCategory(pc) {
+  return {
+    id: pc.id,
+    name: pc.description || '',
+    parent_id: pc.parentId || null,
+    _pluggy: true
+  };
+}
+
+// Busca todas as transações do Pluggy para todas as contas de todos os items,
+// paginando automaticamente (pageSize 500, máximo da API).
+async function pluggyFetchAllTransactions(accounts, start, end) {
+  var allTxs = [];
+  for (var i = 0; i < accounts.length; i++) {
+    var accId = accounts[i].id;
+    var page = 1;
+    var totalPages = 1;
+    while (page <= totalPages) {
+      var qs = 'accountId=' + encodeURIComponent(accId)
+             + '&from=' + encodeURIComponent(start)
+             + '&to=' + encodeURIComponent(end)
+             + '&pageSize=500&page=' + page;
+      try {
+        var resp = await apiPluggy('transactions?' + qs);
+        if (resp && resp.results) {
+          allTxs = allTxs.concat(resp.results.map(pluggyAdaptTransaction));
+          totalPages = resp.totalPages || 1;
+        }
+      } catch (e) {
+        console.warn('pluggy transactions page ' + page + ' acc ' + accId, e);
+        break;
+      }
+      page++;
+      if (page <= totalPages) await _sleep(300);
+    }
+    if (i < accounts.length - 1) await _sleep(300);
+  }
+  return allTxs;
+}
+
+// loadAll() para o backend Pluggy
+async function loadAllPluggy() {
+  var itemIds = getPluggyItemIds();
+  if (!itemIds.length) {
+    throw new Error('Nenhuma conexão bancária configurada no Pluggy. Use o botão "Conectar banco" nas Configurações.');
+  }
+  var startInput = document.getElementById('filterStart');
+  var endInput = document.getElementById('filterEnd');
+  var startVal = (startInput && startInput.value) || (STATE.txFilterRange && STATE.txFilterRange.start) || monthStart();
+  var endVal = (endInput && endInput.value) || (STATE.txFilterRange && STATE.txFilterRange.end) || monthEnd();
+  STATE.txFilterRange = { start: startVal, end: endVal };
+  if (startInput && !startInput.value) startInput.value = startVal;
+  if (endInput && !endInput.value) endInput.value = endVal;
+
+  var DELAY = 400;
+  var _loadErrors = [];
+
+  // 1. Busca contas de todos os items
+  var allAccounts = [];
+  for (var i = 0; i < itemIds.length; i++) {
+    try {
+      var accResp = await apiPluggy('accounts?itemId=' + encodeURIComponent(itemIds[i]));
+      if (accResp && accResp.results) allAccounts = allAccounts.concat(accResp.results);
+    } catch (e) {
+      console.warn('pluggy accounts item ' + itemIds[i], e);
+      _loadErrors.push({ label: 'accounts/' + itemIds[i], error: e });
+    }
+    await _sleep(DELAY);
+  }
+
+  // 2. Categorias (global, não depende de item)
+  var categories = [];
+  try {
+    var catResp = await apiPluggy('categories');
+    if (catResp && catResp.results) categories = catResp.results;
+  } catch (e) {
+    console.warn('pluggy categories', e);
+    _loadErrors.push({ label: 'categories', error: e });
+  }
+  await _sleep(DELAY);
+
+  // 3. Transações de todas as contas
+  var adaptedAccounts = allAccounts.map(pluggyAdaptAccount);
+  var transactions = await pluggyFetchAllTransactions(allAccounts, startVal, endVal);
+
+  // 4. Separa contas bancárias e cartões de crédito
+  var creditCards = allAccounts
+    .filter(function(a) { return a.type === 'CREDIT'; })
+    .map(function(a) {
+      return {
+        id: a.id,
+        name: a.name || a.marketingName || 'Cartão',
+        limit: a.creditData ? a.creditData.creditLimit : 0,
+        available_limit: a.creditData ? a.creditData.availableCreditLimit : 0,
+        _pluggy: true
+      };
+    });
+
+  STATE.accounts = adaptedAccounts;
+  STATE.categories = categories.map(pluggyAdaptCategory);
+  STATE.transactions = transactions;
+  STATE.creditCards = creditCards;
+  STATE.budgets = []; // Pluggy não tem conceito de orçamento
+  STATE.invoices = {};
+  STATE.lastRefreshAt = Date.now();
+  STATE._lastLoadErrors = _loadErrors;
+  updateRefreshLabel();
+
+  if (_loadErrors.length > 0) {
+    var is429 = _loadErrors.some(function(e) { return e.error && e.error.status === 429; });
+    var msg = is429
+      ? '⚠️ A API do Pluggy limitou as requisições. Os dados serão atualizados em alguns minutos.'
+      : '⚠️ Algumas chamadas à API do Pluggy falharam (' + _loadErrors.map(function(e) { return e.label; }).join(', ') + ').';
+    var bannerEl = document.getElementById('__errBanner');
+    var bannerTxt = document.getElementById('__errBannerText');
+    if (bannerEl && bannerTxt) { bannerTxt.textContent = msg; bannerEl.classList.add('show'); }
+  }
+}
 const CHARTS = {};
 const MEMBER_TAGS = {
   alfredo: ['alfredo','alf','consultório','cremers','plantão','hospital'],
@@ -1730,6 +2042,11 @@ async function api(endpoint, options) {
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
 async function loadAll() {
+  // Despacha para o backend ativo (Organizze ou Pluggy)
+  if (getActiveBackend() === 'pluggy') {
+    return loadAllPluggy();
+  }
+  // ── Backend Organizze (original) ──
   // Preserva o período selecionado pelo usuário: usa os inputs de filtro se
   // já estiverem preenchidos (ou o STATE.txFilterRange), caindo para o mês
   // atual apenas na primeira carga. Isso evita que o auto-refresh devolva o
@@ -2013,12 +2330,21 @@ function getMustChangePassword() {
 }
 
 async function continueAfterLogin() {
-  var creds = getOrgCreds();
-  if (!creds.email || !creds.token) {
+  // Inicializa backend ativo salvo no localStorage
+  STATE.backend = getActiveBackend();
+  STATE.pluggyItemIds = getPluggyItemIds();
+
+  // Verifica se o backend ativo tem credenciais configuradas
+  var hasOrgCreds = (function() { var c = getOrgCreds(); return !!(c.email && c.token); })();
+  var hasPluggyCreds = (function() { var c = getPluggyCreds(); return !!(c.clientId && c.clientSecret); })();
+  var activeBackend = getActiveBackend();
+  var hasActiveCreds = (activeBackend === 'organizze') ? hasOrgCreds : hasPluggyCreds;
+
+  if (!hasActiveCreds) {
     try {
       renderPage('settings');
-      var s = document.getElementById('orgConfigStatus');
-      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso ao Organizze para começar.</span>';
+      var s = document.getElementById(activeBackend === 'pluggy' ? 'pluggyConfigStatus' : 'orgConfigStatus');
+      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso para começar.</span>';
     } catch (e) { showError('renderPage(settings)', e); }
     return;
   }
@@ -2642,8 +2968,15 @@ async function checkSavedLogin() {
     return;
   }
 
-  var creds = getOrgCreds();
-  if (!creds.email || !creds.token) {
+  // Inicializa backend
+  STATE.backend = getActiveBackend();
+  STATE.pluggyItemIds = getPluggyItemIds();
+  var activeBackend = getActiveBackend();
+  var hasOrgCreds = (function() { var c = getOrgCreds(); return !!(c.email && c.token); })();
+  var hasPluggyCreds = (function() { var c = getPluggyCreds(); return !!(c.clientId && c.clientSecret); })();
+  var hasActiveCreds = (activeBackend === 'organizze') ? hasOrgCreds : hasPluggyCreds;
+
+  if (!hasActiveCreds) {
     try { renderPage('settings'); } catch (e) { showError('checkSavedLogin:renderSettings', e); }
     return;
   }
@@ -2658,6 +2991,7 @@ async function checkSavedLogin() {
 //  ORGANIZZE CONFIG (Settings page)
 // ═══════════════════════════════════════════════
 function renderSettings() {
+  // Organizze fields
   var e = localStorage.getItem('org_email') || '';
   var t = localStorage.getItem('org_token') || '';
   var ei = document.getElementById('orgEmailInput');
@@ -2666,6 +3000,168 @@ function renderSettings() {
   if (ti) ti.value = t;
   var s = document.getElementById('orgConfigStatus');
   if (s && !s.innerHTML) s.textContent = '';
+
+  // Pluggy fields
+  var pc = getPluggyCreds();
+  var pci = document.getElementById('pluggyClientIdInput');
+  var psi = document.getElementById('pluggyClientSecretInput');
+  if (pci) pci.value = pc.clientId;
+  if (psi) psi.value = pc.clientSecret;
+
+  // Backend toggle visual
+  updateBackendToggleUI();
+  renderPluggyItems();
+}
+
+// ─── Backend toggle ───────────────────────────────────────────────
+function switchBackend(backend) {
+  setActiveBackend(backend);
+  updateBackendToggleUI();
+  // Recarrega dados com o novo backend
+  refreshData({ force: true });
+}
+
+function updateBackendToggleUI() {
+  var active = getActiveBackend();
+  STATE.backend = active;
+  var btnOrg = document.getElementById('btnBackendOrg');
+  var btnPluggy = document.getElementById('btnBackendPluggy');
+  var settingsOrg = document.getElementById('settingsOrganizze');
+  var settingsPluggy = document.getElementById('settingsPluggy');
+  var statusEl = document.getElementById('backendStatus');
+  if (btnOrg && btnPluggy) {
+    var activeStyle = 'background:var(--green-600);color:#fff;';
+    var inactiveStyle = 'background:var(--bg-input);color:var(--text-secondary);';
+    btnOrg.style.cssText = 'flex:1;padding:12px 16px;border:none;font-family:Outfit,sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;' + (active === 'organizze' ? activeStyle : inactiveStyle);
+    btnPluggy.style.cssText = 'flex:1;padding:12px 16px;border:none;font-family:Outfit,sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;' + (active === 'pluggy' ? activeStyle : inactiveStyle);
+  }
+  if (settingsOrg) settingsOrg.style.display = (active === 'organizze') ? '' : 'none';
+  if (settingsPluggy) settingsPluggy.style.display = (active === 'pluggy') ? '' : 'none';
+  if (statusEl) {
+    statusEl.textContent = active === 'organizze'
+      ? 'Usando API do Organizze para buscar dados bancários.'
+      : 'Usando API do Pluggy (Open Finance) para buscar dados bancários.';
+  }
+}
+
+// ─── Pluggy config ────────────────────────────────────────────────
+async function savePluggyConfig() {
+  var clientId = document.getElementById('pluggyClientIdInput').value.trim();
+  var clientSecret = document.getElementById('pluggyClientSecretInput').value.trim();
+  var status = document.getElementById('pluggyConfigStatus');
+  if (!clientId || !clientSecret) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Preencha Client ID e Client Secret.</span>';
+    return;
+  }
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Validando credenciais...</span>';
+  savePluggyCreds(clientId, clientSecret);
+  try {
+    // Testa autenticação chamando o endpoint de categorias (leve)
+    await apiPluggy('categories');
+    if (status) status.innerHTML = '<span style="color:var(--green-600);">✓ Credenciais válidas! Conecte seus bancos abaixo.</span>';
+  } catch (e) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro ao validar: ' + (e.message || 'desconhecido') + '</span>';
+  }
+}
+
+function clearPluggyConfig() {
+  if (!confirm('Remover as credenciais do Pluggy deste dispositivo?')) return;
+  localStorage.removeItem('pluggy_client_id');
+  localStorage.removeItem('pluggy_client_secret');
+  localStorage.removeItem('pluggy_item_ids');
+  STATE.pluggyItemIds = [];
+  document.getElementById('pluggyClientIdInput').value = '';
+  document.getElementById('pluggyClientSecretInput').value = '';
+  document.getElementById('pluggyConfigStatus').innerHTML = '<span style="color:var(--text-secondary);">Credenciais removidas.</span>';
+  renderPluggyItems();
+}
+
+// ─── Pluggy Items (bancos conectados) ─────────────────────────────
+function renderPluggyItems() {
+  var el = document.getElementById('pluggyItemsList');
+  if (!el) return;
+  var ids = getPluggyItemIds();
+  if (!ids.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Nenhum banco conectado ainda.</p>';
+    return;
+  }
+  el.innerHTML = ids.map(function(id, i) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-input);border-radius:8px;margin-bottom:6px;">'
+      + '<span style="font-size:13px;font-family:Space Mono,monospace;color:var(--text-secondary);">🏦 ' + id.substring(0, 8) + '...</span>'
+      + '<button class="btn btn-secondary btn-sm" onclick="removePluggyItem(' + i + ')" style="font-size:11px;">🗑️ Remover</button>'
+      + '</div>';
+  }).join('');
+}
+
+function removePluggyItem(index) {
+  var ids = getPluggyItemIds();
+  if (!confirm('Remover esta conexão bancária?')) return;
+  ids.splice(index, 1);
+  savePluggyItemIds(ids);
+  renderPluggyItems();
+}
+
+// ─── Pluggy Connect Widget ────────────────────────────────────────
+function openPluggyConnect() {
+  var creds = getPluggyCreds();
+  if (!creds.clientId || !creds.clientSecret) {
+    alert('Salve suas credenciais do Pluggy primeiro.');
+    return;
+  }
+  var status = document.getElementById('pluggyConfigStatus');
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Obtendo token de conexão...</span>';
+
+  // Pede ao proxy um connect_token
+  apiPluggy('connect_token', {
+    method: 'POST',
+    body: { options: { avoidDuplicates: true } }
+  }).then(function(resp) {
+    var token = resp && resp.accessToken;
+    if (!token) {
+      if (status) status.innerHTML = '<span style="color:var(--red);">Erro: não foi possível obter token de conexão.</span>';
+      return;
+    }
+    if (status) status.innerHTML = '';
+    // Carrega o widget do Pluggy via CDN (se ainda não carregado)
+    _loadPluggyWidget(function() {
+      var pluggyConnect = new PluggyConnect({
+        connectToken: token,
+        includeSandbox: false,
+        onSuccess: function(itemData) {
+          var itemId = itemData && itemData.item && itemData.item.id;
+          if (itemId) {
+            var ids = getPluggyItemIds();
+            if (ids.indexOf(itemId) === -1) {
+              ids.push(itemId);
+              savePluggyItemIds(ids);
+            }
+            renderPluggyItems();
+            if (status) status.innerHTML = '<span style="color:var(--green-600);">✓ Banco conectado com sucesso!</span>';
+          }
+        },
+        onError: function(err) {
+          console.error('Pluggy Connect error:', err);
+          if (status) status.innerHTML = '<span style="color:var(--red);">Erro na conexão: ' + (err.message || JSON.stringify(err)) + '</span>';
+        },
+        onClose: function() {
+          console.log('Pluggy Connect fechado.');
+        }
+      });
+      pluggyConnect.init();
+    });
+  }).catch(function(e) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro ao obter token: ' + (e.message || 'desconhecido') + '</span>';
+  });
+}
+
+// Carrega o script do Pluggy Connect Widget sob demanda
+function _loadPluggyWidget(cb) {
+  if (typeof PluggyConnect !== 'undefined') { cb(); return; }
+  var script = document.createElement('script');
+  script.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js';
+  script.onload = cb;
+  script.onerror = function() { alert('Erro ao carregar o widget do Pluggy. Verifique sua conexão.'); };
+  document.head.appendChild(script);
 }
 
 async function saveOrgConfig() {
@@ -2715,7 +3211,16 @@ function clearOrgConfig() {
   document.getElementById('orgConfigStatus').innerHTML = '<span style="color: var(--text-secondary);">Credenciais removidas.</span>';
 }
 
-async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
+async function fetchTransactions(s, e) {
+  if (getActiveBackend() === 'pluggy') {
+    // No Pluggy as transações vêm por conta; busca todas as contas e depois as transações
+    var accs = STATE.accounts || [];
+    if (!accs.length) return [];
+    var rawAccs = accs.map(function(a) { return a._raw || a; });
+    return pluggyFetchAllTransactions(rawAccs, s, e);
+  }
+  return api('transactions?start_date=' + s + '&end_date=' + e);
+}
 
 // ═══════════════════════════════════════════════
 //  NAVIGATION
