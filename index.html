@@ -1650,6 +1650,12 @@ function getOrgCreds() {
   };
 }
 
+// Delay helper — usado para espaçar chamadas e evitar rate-limit/WAF.
+function _sleep(ms) { return new Promise(function(resolve) { setTimeout(resolve, ms); }); }
+
+// Contabiliza erros consecutivos da API para backoff adaptativo.
+var _apiConsecutiveErrors = 0;
+
 async function api(endpoint, options) {
   if (!options) options = {};
   var creds = getOrgCreds();
@@ -1662,7 +1668,7 @@ async function api(endpoint, options) {
   // Normaliza: remove barras iniciais para não virar "rest/v2//transactions"
   var clean = String(endpoint).replace(/^\/+/, '');
   var url = '/api/proxy?endpoint=' + encodeURIComponent(clean);
-  var opts = {
+  var fetchOpts = {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -1672,15 +1678,37 @@ async function api(endpoint, options) {
   };
   if (options.body !== undefined && options.body !== null) {
     // Aceita objeto ou string; não faz dupla serialização.
-    opts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+    fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
   }
-  var r = await fetch(url, opts);
-  var text = await r.text();
-  var data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch (_) { data = text; }
-  }
-  if (!r.ok) {
+
+  // Retry com backoff exponencial para erros de rede, 429 e 5xx.
+  // Status 401/403/404 NÃO são retentados (erro de credencial/rota).
+  var maxRetries = options._noRetry ? 0 : 3;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      var delay = Math.min(2000 * Math.pow(2, attempt - 1), 16000); // 2s, 4s, 8s
+      console.warn('[api] retry ' + attempt + '/' + maxRetries + ' em ' + delay + 'ms — ' + clean);
+      await _sleep(delay);
+    }
+    try {
+      var r = await fetch(url, fetchOpts);
+    } catch (netErr) {
+      // Erro de rede (offline, DNS, timeout) — retenta
+      lastErr = netErr;
+      lastErr.status = 0;
+      continue;
+    }
+    var text = await r.text();
+    var data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (_) { data = text; }
+    }
+    if (r.ok) {
+      _apiConsecutiveErrors = 0;
+      return data;
+    }
+    // Monta erro detalhado
     var reason = '';
     if (data && typeof data === 'object') {
       reason = data.error || data.message || data.errors || '';
@@ -1688,12 +1716,15 @@ async function api(endpoint, options) {
     } else if (typeof data === 'string') {
       reason = data;
     }
-    var err = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
-    err.status = r.status;
-    err.data = data;
-    throw err;
+    lastErr = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
+    lastErr.status = r.status;
+    lastErr.data = data;
+    // Só retenta em 429 (rate limit) ou 5xx (erro do servidor)
+    var retryable = r.status === 429 || r.status >= 500;
+    if (!retryable) break;
   }
-  return data;
+  _apiConsecutiveErrors++;
+  throw lastErr;
 }
 
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
@@ -1715,33 +1746,72 @@ async function loadAll() {
   if (endInput && !endInput.value) endInput.value = endVal;
   var start = startVal;
   var end = endVal;
-  var results = await Promise.all([
-    api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
-    api('categories').catch(function(e){ console.warn('categories', e); return []; }),
-    api('transactions?start_date=' + start + '&end_date=' + end).catch(function(e){ console.warn('transactions', e); return []; }),
-    api('credit_cards').catch(function(e){ console.warn('credit_cards', e); return []; }),
-    api('budgets').catch(function(e){ console.warn('budgets', e); return []; })
-  ]);
-  STATE.accounts    = Array.isArray(results[0]) ? results[0] : [];
-  STATE.categories  = Array.isArray(results[1]) ? results[1] : [];
-  STATE.transactions = Array.isArray(results[2]) ? results[2] : [];
-  STATE.creditCards = Array.isArray(results[3]) ? results[3] : [];
-  STATE.budgets     = Array.isArray(results[4]) ? results[4] : [];
+  // Chamadas sequenciais com delay entre elas para não disparar rate-limit/WAF.
+  // Antes eram 5 em paralelo — esse burst é a causa mais provável de bloqueio.
+  var INTER_CALL_DELAY = 400; // ms entre cada chamada
+  var _loadErrors = [];
+  async function _seq(label, fn) {
+    try { return await fn(); }
+    catch (e) { console.warn(label, e); _loadErrors.push({ label: label, error: e }); return []; }
+  }
+  var r0 = await _seq('accounts',     function() { return api('accounts'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r1 = await _seq('categories',   function() { return api('categories'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r2 = await _seq('transactions', function() { return api('transactions?start_date=' + start + '&end_date=' + end); });
+  await _sleep(INTER_CALL_DELAY);
+  var r3 = await _seq('credit_cards', function() { return api('credit_cards'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r4 = await _seq('budgets',      function() { return api('budgets'); });
+
+  STATE.accounts     = Array.isArray(r0) ? r0 : [];
+  STATE.categories   = Array.isArray(r1) ? r1 : [];
+  STATE.transactions = Array.isArray(r2) ? r2 : [];
+  STATE.creditCards  = Array.isArray(r3) ? r3 : [];
+  STATE.budgets      = Array.isArray(r4) ? r4 : [];
   STATE.invoices = {};
   for (var i = 0; i < STATE.creditCards.length; i++) {
     var card = STATE.creditCards[i];
     try {
       STATE.invoices[card.id] = await api('credit_cards/' + card.id + '/invoices');
-    } catch (e) { console.warn('invoices ' + card.id, e); }
+      if (i < STATE.creditCards.length - 1) await _sleep(INTER_CALL_DELAY);
+    } catch (e) { console.warn('invoices ' + card.id, e); _loadErrors.push({ label: 'invoices/' + card.id, error: e }); }
   }
   STATE.lastRefreshAt = Date.now();
+  STATE._lastLoadErrors = _loadErrors;
   updateRefreshLabel();
+
+  // Feedback visível quando alguma chamada falhou
+  if (_loadErrors.length > 0) {
+    var is429 = _loadErrors.some(function(e) { return e.error && e.error.status === 429; });
+    var is403 = _loadErrors.some(function(e) { return e.error && e.error.status === 403; });
+    var isNet = _loadErrors.some(function(e) { return e.error && (e.error.status === 0 || !e.error.status); });
+    var msg;
+    if (is429) {
+      msg = '⚠️ A API do Organizze limitou as requisições (rate limit). Os dados serão atualizados automaticamente em alguns minutos.';
+    } else if (is403) {
+      msg = '⚠️ Acesso bloqueado pela API do Organizze (403). Pode ser um bloqueio temporário do WAF — aguarde alguns minutos e tente novamente.';
+    } else if (isNet) {
+      msg = '⚠️ Erro de rede ao conectar com o Organizze. Verifique sua conexão.';
+    } else {
+      msg = '⚠️ Algumas chamadas à API do Organizze falharam (' + _loadErrors.map(function(e) { return e.label; }).join(', ') + '). Os dados podem estar incompletos.';
+    }
+    // Exibe mensagem amigável no banner de erro existente
+    var bannerEl = document.getElementById('__errBanner');
+    var bannerTxt = document.getElementById('__errBannerText');
+    if (bannerEl && bannerTxt) {
+      bannerTxt.textContent = msg;
+      bannerEl.classList.add('show');
+    } else {
+      console.warn(msg);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════
 //  AUTO-REFRESH (polling automático + botão manual)
 // ═══════════════════════════════════════════════
-const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+const AUTO_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutos (reduzido de 5 para aliviar rate-limit)
 
 function updateRefreshLabel() {
   var el = document.getElementById('lastRefreshLabel');
@@ -1756,6 +1826,10 @@ function updateRefreshLabel() {
   else if (diff < 60) txt = '✓ Há ' + diff + 's';
   else if (diff < 3600) txt = '✓ Há ' + Math.floor(diff / 60) + ' min';
   else txt = '✓ Há ' + Math.floor(diff / 3600) + 'h';
+  // Indica se a última carga teve falhas parciais
+  if (STATE._lastLoadErrors && STATE._lastLoadErrors.length > 0) {
+    txt += ' (parcial ⚠️)';
+  }
   el.textContent = txt;
 }
 
@@ -1813,14 +1887,28 @@ async function refreshNow() {
 
 function startAutoRefresh() {
   stopAutoRefresh();
-  STATE.autoRefreshTimer = setInterval(function() {
-    refreshData({ silent: true });
-  }, AUTO_REFRESH_INTERVAL_MS);
+  _scheduleNextRefresh();
+}
+
+// Agenda o próximo refresh com intervalo adaptativo:
+// - Se a última carga teve erros, dobra o intervalo (até 30 min).
+// - Se tudo OK, volta ao intervalo base (10 min).
+function _scheduleNextRefresh() {
+  var interval = AUTO_REFRESH_INTERVAL_MS;
+  if (_apiConsecutiveErrors > 0) {
+    // Backoff: 20 min, 30 min, 30 min...
+    interval = Math.min(AUTO_REFRESH_INTERVAL_MS * Math.pow(2, Math.min(_apiConsecutiveErrors, 2)), 30 * 60 * 1000);
+    console.warn('[auto-refresh] backoff ativo — próximo refresh em ' + Math.round(interval / 1000) + 's (erros consecutivos: ' + _apiConsecutiveErrors + ')');
+  }
+  STATE.autoRefreshTimer = setTimeout(async function() {
+    await refreshData({ silent: true });
+    _scheduleNextRefresh(); // re-agenda com intervalo atualizado
+  }, interval);
 }
 
 function stopAutoRefresh() {
   if (STATE.autoRefreshTimer) {
-    clearInterval(STATE.autoRefreshTimer);
+    clearTimeout(STATE.autoRefreshTimer);
     STATE.autoRefreshTimer = null;
   }
 }
