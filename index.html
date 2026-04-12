@@ -3994,7 +3994,12 @@ function exportXLS() {
     html += '<x:Name>Lancamentos</x:Name>';
     html += '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>';
     html += '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>';
-    html += '<style>td,th{mso-number-format:"\\@";font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;} td.num{mso-number-format:"#,##0.00";text-align:right;}</style>';
+    // IMPORTANTE: o parser HTML do Excel NÃO aplica mso-number-format via
+    // seletores de classe de forma confiável — precisa ser inline em cada td.
+    // Por isso definimos os formatos como estilos inline abaixo, não no <style>.
+    const styleText = 'mso-number-format:"\\@";';
+    const styleNum  = 'mso-number-format:"#,##0.00";text-align:right;';
+    html += '<style>td,th{font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;}</style>';
     html += '</head><body>';
     html += '<table border="1">';
     html += '<tr><td colspan="6"><b>Família Metzger - Lançamentos</b></td></tr>';
@@ -4004,11 +4009,16 @@ function exportXLS() {
     html += '<tr>' + header.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr>';
     rows.forEach(r => {
       html += '<tr>';
-      // Colunas de texto
-      for (let i = 0; i < 5; i++) html += '<td>' + esc(r[i]) + '</td>';
-      // Coluna de valor como número real (Excel calcula). Converte vírgula → ponto.
+      // Colunas de texto — força formato texto inline para não virar data/número
+      for (let i = 0; i < 5; i++) {
+        html += '<td style=\'' + styleText + '\'>' + esc(r[i]) + '</td>';
+      }
+      // Coluna de valor como número real — formato numérico inline (classe não
+      // funciona no Excel). O valor é emitido no formato Excel-neutro (ponto
+      // como separador decimal); o Excel exibe conforme o locale do usuário
+      // (pt-BR → vírgula). Converte "1.234,56" → "1234.56".
       const numeric = String(r[5]).replace(/\./g, '').replace(',', '.');
-      html += '<td class="num">' + esc(numeric) + '</td>';
+      html += '<td style=\'' + styleNum + '\'>' + esc(numeric) + '</td>';
       html += '</tr>';
     });
     html += '</table></body></html>';
