@@ -1137,7 +1137,28 @@ tr:hover td { background: var(--bg-card-alt); }
 
     <!-- ═══ SETTINGS ═══ -->
     <div class="page" id="page-settings">
-      <div class="card">
+
+      <!-- ── Chave comutadora de backend ── -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><span class="card-title">🔀 Fonte de dados bancários</span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px; line-height:1.5;">
+            Escolha de onde o app busca seus lançamentos, contas e categorias. Só um backend fica ativo por vez.
+          </p>
+          <div id="backendToggle" style="display:flex;gap:0;border:2px solid var(--border);border-radius:12px;overflow:hidden;max-width:400px;">
+            <button id="btnBackendOrg" onclick="switchBackend('organizze')" style="flex:1;padding:12px 16px;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;">
+              Organizze
+            </button>
+            <button id="btnBackendPluggy" onclick="switchBackend('pluggy')" style="flex:1;padding:12px 16px;border:none;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;">
+              Pluggy
+            </button>
+          </div>
+          <div id="backendStatus" style="font-size:12px;color:var(--text-muted);margin-top:8px;min-height:16px;"></div>
+        </div>
+      </div>
+
+      <!-- ── Config Organizze ── -->
+      <div id="settingsOrganizze" class="card">
         <div class="card-header"><span class="card-title">🔗 Conexão com o Organizze</span></div>
         <div style="padding: 8px 4px 4px;">
           <p style="color: var(--text-secondary); margin-bottom: 14px;">Para o app buscar seus dados, ele precisa do seu e-mail e do token da API do Organizze.</p>
@@ -1163,42 +1184,40 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
       </div>
 
-      <div class="card" style="margin-top:20px;">
-        <div class="card-header">
-          <span class="card-title">🚫 Categorias ignoradas nos totais</span>
-        </div>
+      <!-- ── Config Pluggy ── -->
+      <div id="settingsPluggy" class="card" style="margin-top:20px;display:none;">
+        <div class="card-header"><span class="card-title">🔌 Conexão com o Pluggy</span></div>
         <div style="padding: 8px 4px 4px;">
-          <p style="color: var(--text-secondary); margin-bottom: 10px;line-height:1.5;">
-            Alguns lançamentos <strong>não devem entrar</strong> no cálculo de receitas/despesas para evitar contagem dupla. Os dois casos mais comuns são:
+          <p style="color: var(--text-secondary); margin-bottom: 14px; line-height:1.5;">
+            O Pluggy conecta diretamente com seus bancos via Open Finance Brasil.<br>
+            Insira suas credenciais do <a href="https://meu.pluggy.ai" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">meu.pluggy.ai</a> e depois conecte seus bancos.
           </p>
-          <ul style="color: var(--text-secondary); margin: 0 0 10px 18px; padding: 0; font-size: 13px; line-height: 1.6;">
-            <li><strong>💳 Pagamento de fatura de cartão</strong> — os gastos já foram lançados pelo cartão; quando a fatura é debitada em conta, contar de novo duplica o total.</li>
-            <li><strong>🔁 Transferência entre contas suas</strong> — passar dinheiro de uma conta para outra (ex: Bradesco → Unicred) aparece como débito em uma e crédito na outra, mas não é despesa nem receita real.</li>
-          </ul>
-          <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 14px;line-height:1.5;">
-            Marque aqui as categorias que representam esses casos. O app passa a <strong>ignorá-las</strong> nos totais do Dashboard, Lançamentos, Relatórios, Família, Saúde Financeira e exportações. As transações continuam aparecendo na lista de Lançamentos com selo <em>🚫 NÃO CONTA</em>, opacidade reduzida e valor riscado.
-          </p>
+          <div style="background: var(--blue-light); border-left: 4px solid var(--blue); padding: 14px 16px; border-radius: 8px; margin: 0 0 16px; font-size: 14px; line-height: 1.5;">
+            <strong>Como obter suas credenciais do Pluggy:</strong><br>
+            1. Acesse <a href="https://meu.pluggy.ai" target="_blank" rel="noopener" style="color: var(--blue); font-weight: 600;">meu.pluggy.ai</a> e faça login<br>
+            2. Vá em <strong>Configurações &gt; Chaves de API</strong><br>
+            3. Copie o <strong>Client ID</strong> e o <strong>Client Secret</strong><br>
+            4. Cole abaixo e clique em "Salvar credenciais"
+          </div>
           <div class="form-group" style="margin-bottom: 14px;">
-            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Categorias ignoradas</label>
-            <div id="invoicePayCatList" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;padding:10px 12px;border:1px solid var(--border);background:var(--bg-input);border-radius:10px;"></div>
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client ID</label>
+            <input type="text" id="pluggyClientIdInput" placeholder="Cole seu Client ID aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
           </div>
-          <div id="invoicePayStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client Secret</label>
+            <input type="password" id="pluggyClientSecretInput" placeholder="Cole seu Client Secret aqui" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div id="pluggyConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px;">
+            <button class="btn btn-primary" onclick="savePluggyConfig()">💾 Salvar credenciais</button>
+            <button class="btn btn-secondary" onclick="clearPluggyConfig()">🗑️ Limpar credenciais</button>
+          </div>
+          <hr style="margin:0 0 18px;border:none;border-top:1px solid var(--border);" />
+          <p style="color: var(--text-secondary); margin-bottom: 10px; font-weight: 600;">🏦 Bancos conectados</p>
+          <div id="pluggyItemsList" style="margin-bottom: 14px; min-height: 30px;"></div>
           <div style="display:flex; gap: 10px; flex-wrap: wrap;">
-            <button class="btn btn-primary" onclick="saveInvoicePayCategories()">💾 Salvar seleção</button>
-            <button class="btn btn-secondary" onclick="autoDetectInvoicePayments()" title="Encontra pagamentos de fatura e transferências entre contas nas descrições dos lançamentos">🔍 Detectar automaticamente</button>
+            <button class="btn btn-primary" id="btnPluggyConnect" onclick="openPluggyConnect()">➕ Conectar banco</button>
           </div>
-          <hr style="margin:18px 0;border:none;border-top:1px solid var(--border);" />
-          <p style="color: var(--text-secondary); margin-bottom: 8px; line-height:1.5; font-size:13px;">
-            <strong>🔄 Detecção automática de estornos</strong>
-          </p>
-          <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 10px; line-height:1.5;">
-            Quando uma operação é estornada pelo banco (saiu R$ X e voltou R$ X na mesma conta em até 5 dias, com descrição parecida ou contendo "estorno/cancel/reembolso/devolução"), o app marca o par como <em>🔄 ESTORNO</em> e ignora ambas as pernas nos totais. Desligue se estiver gerando falsos positivos.
-          </p>
-          <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:4px 2px;">
-            <input type="checkbox" id="reversalToggle" onchange="onReversalToggleChange(this.checked)" />
-            <span>Ignorar estornos automaticamente nos totais</span>
-          </label>
-          <div id="reversalStatus" style="font-size: 12px; color: var(--text-muted); margin-top: 6px; min-height: 16px;"></div>
         </div>
       </div>
 
@@ -1566,15 +1585,266 @@ let STATE = {
   selectedTxIds: new Set(), // IDs de transações selecionadas para ações em massa
   txSort: { column: 'date', direction: 'desc' }, // coluna e direção do sort da tabela de Lançamentos
   lastRefreshAt: null, // timestamp da última atualização bem-sucedida
-  autoRefreshTimer: null, // handle do setInterval
+  autoRefreshTimer: null, // handle do setTimeout
   fixedBills: [], // contas/receitas fixas mensais (Supabase.fixed_bills)
   fixedBillsLoadedAt: null,
   reportMonths: 6,
-  invoicePaymentCategoryIds: [], // categorias consideradas "pagamento de fatura" (excluídas dos totais)
-  reversalIds: new Set(), // IDs de transações detectadas como estorno (pares auto-cancelados)
-  detectReversalsEnabled: true, // toggle em Settings para ligar/desligar a detecção automática
   manuallyExcludedTxIds: new Set(), // IDs de lançamentos manualmente excluídos do cálculo geral (localStorage)
+  backend: 'organizze', // 'organizze' | 'pluggy' — backend ativo para dados bancários
+  pluggyItemIds: [], // IDs de conexões (Items) no Pluggy
 };
+
+// ─── Backend ativo (Organizze ou Pluggy) ──────────────────────────
+function getActiveBackend() {
+  return localStorage.getItem('active_backend') || 'organizze';
+}
+function setActiveBackend(backend) {
+  STATE.backend = backend;
+  localStorage.setItem('active_backend', backend);
+}
+
+// ─── Credenciais Pluggy ───────────────────────────────────────────
+function getPluggyCreds() {
+  return {
+    clientId: localStorage.getItem('pluggy_client_id') || '',
+    clientSecret: localStorage.getItem('pluggy_client_secret') || ''
+  };
+}
+function savePluggyCreds(clientId, clientSecret) {
+  localStorage.setItem('pluggy_client_id', clientId);
+  localStorage.setItem('pluggy_client_secret', clientSecret);
+}
+function getPluggyItemIds() {
+  try {
+    var raw = localStorage.getItem('pluggy_item_ids');
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) { return []; }
+}
+function savePluggyItemIds(ids) {
+  STATE.pluggyItemIds = ids;
+  localStorage.setItem('pluggy_item_ids', JSON.stringify(ids));
+}
+
+// ─── API Pluggy (via proxy-pluggy.js) ─────────────────────────────
+async function apiPluggy(endpoint, options) {
+  if (!options) options = {};
+  var creds = getPluggyCreds();
+  if (!creds.clientId || !creds.clientSecret) {
+    var err = new Error('Pluggy não configurado. Vá em Configurações para conectar.');
+    err.status = 0;
+    err.code = 'NO_PLUGGY_CREDS';
+    throw err;
+  }
+  var clean = String(endpoint).replace(/^\/+/, '');
+  var url = '/api/proxy-pluggy?endpoint=' + encodeURIComponent(clean);
+  var fetchOpts = {
+    method: options.method || 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Pluggy-Client-Id': creds.clientId,
+      'X-Pluggy-Client-Secret': creds.clientSecret
+    }
+  };
+  if (options.body !== undefined && options.body !== null) {
+    fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
+  // Retry com backoff (reusa a mesma lógica do api())
+  var maxRetries = options._noRetry ? 0 : 3;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      var delay = Math.min(2000 * Math.pow(2, attempt - 1), 16000);
+      console.warn('[apiPluggy] retry ' + attempt + '/' + maxRetries + ' em ' + delay + 'ms — ' + clean);
+      await _sleep(delay);
+    }
+    try {
+      var r = await fetch(url, fetchOpts);
+    } catch (netErr) {
+      lastErr = netErr;
+      lastErr.status = 0;
+      continue;
+    }
+    var text = await r.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+    if (r.ok) {
+      _apiConsecutiveErrors = 0;
+      return data;
+    }
+    var reason = '';
+    if (data && typeof data === 'object') {
+      reason = data.error || data.message || data.errors || '';
+      if (typeof reason === 'object') reason = JSON.stringify(reason);
+    } else if (typeof data === 'string') { reason = data; }
+    lastErr = new Error('Pluggy API ' + r.status + (reason ? ': ' + reason : ''));
+    lastErr.status = r.status;
+    lastErr.data = data;
+    var retryable = r.status === 429 || r.status >= 500;
+    if (!retryable) break;
+  }
+  _apiConsecutiveErrors++;
+  throw lastErr;
+}
+
+// ─── Adaptador Pluggy → formato interno ───────────────────────────
+// Converte respostas da API Pluggy para o mesmo formato que o Organizze
+// usa internamente, permitindo que Dashboard/Lançamentos/Relatórios
+// funcionem sem alterações.
+
+function pluggyAdaptAccount(pa) {
+  // Pluggy account → formato interno (compatível com Organizze)
+  return {
+    id: pa.id,
+    name: pa.name || pa.marketingName || 'Conta',
+    type: pa.type === 'CREDIT' ? 'credit_card' : 'checking',
+    current_balance: pa.balance || 0,
+    _pluggy: true,
+    _raw: pa
+  };
+}
+
+function pluggyAdaptTransaction(pt) {
+  // Pluggy amount: positivo = entrada, mas type indica DEBIT/CREDIT.
+  // No formato interno: positivo = receita, negativo = despesa.
+  var amountFloat = pt.amount || 0;
+  if (pt.type === 'DEBIT' && amountFloat > 0) amountFloat = -amountFloat;
+  if (pt.type === 'CREDIT' && amountFloat < 0) amountFloat = -amountFloat;
+  var amountCents = Math.round(amountFloat * 100);
+  // Data: Pluggy envia ISO (2021-04-12T00:00:00.000Z), interno usa YYYY-MM-DD
+  var dateStr = pt.date ? pt.date.substring(0, 10) : '';
+  return {
+    id: pt.id,
+    description: pt.description || pt.descriptionRaw || '',
+    date: dateStr,
+    amount: amountFloat,
+    amount_cents: amountCents,
+    category_id: pt.categoryId || null,
+    category_name: pt.category || '',
+    account_id: pt.accountId || '',
+    notes: pt.descriptionRaw || '',
+    _pluggy: true,
+    _raw: pt
+  };
+}
+
+function pluggyAdaptCategory(pc) {
+  return {
+    id: pc.id,
+    name: pc.description || '',
+    parent_id: pc.parentId || null,
+    _pluggy: true
+  };
+}
+
+// Busca todas as transações do Pluggy para todas as contas de todos os items,
+// paginando automaticamente (pageSize 500, máximo da API).
+async function pluggyFetchAllTransactions(accounts, start, end) {
+  var allTxs = [];
+  for (var i = 0; i < accounts.length; i++) {
+    var accId = accounts[i].id;
+    var page = 1;
+    var totalPages = 1;
+    while (page <= totalPages) {
+      var qs = 'accountId=' + encodeURIComponent(accId)
+             + '&from=' + encodeURIComponent(start)
+             + '&to=' + encodeURIComponent(end)
+             + '&pageSize=500&page=' + page;
+      try {
+        var resp = await apiPluggy('transactions?' + qs);
+        if (resp && resp.results) {
+          allTxs = allTxs.concat(resp.results.map(pluggyAdaptTransaction));
+          totalPages = resp.totalPages || 1;
+        }
+      } catch (e) {
+        console.warn('pluggy transactions page ' + page + ' acc ' + accId, e);
+        break;
+      }
+      page++;
+      if (page <= totalPages) await _sleep(300);
+    }
+    if (i < accounts.length - 1) await _sleep(300);
+  }
+  return allTxs;
+}
+
+// loadAll() para o backend Pluggy
+async function loadAllPluggy() {
+  var itemIds = getPluggyItemIds();
+  if (!itemIds.length) {
+    throw new Error('Nenhuma conexão bancária configurada no Pluggy. Use o botão "Conectar banco" nas Configurações.');
+  }
+  var startInput = document.getElementById('filterStart');
+  var endInput = document.getElementById('filterEnd');
+  var startVal = (startInput && startInput.value) || (STATE.txFilterRange && STATE.txFilterRange.start) || monthStart();
+  var endVal = (endInput && endInput.value) || (STATE.txFilterRange && STATE.txFilterRange.end) || monthEnd();
+  STATE.txFilterRange = { start: startVal, end: endVal };
+  if (startInput && !startInput.value) startInput.value = startVal;
+  if (endInput && !endInput.value) endInput.value = endVal;
+
+  var DELAY = 400;
+  var _loadErrors = [];
+
+  // 1. Busca contas de todos os items
+  var allAccounts = [];
+  for (var i = 0; i < itemIds.length; i++) {
+    try {
+      var accResp = await apiPluggy('accounts?itemId=' + encodeURIComponent(itemIds[i]));
+      if (accResp && accResp.results) allAccounts = allAccounts.concat(accResp.results);
+    } catch (e) {
+      console.warn('pluggy accounts item ' + itemIds[i], e);
+      _loadErrors.push({ label: 'accounts/' + itemIds[i], error: e });
+    }
+    await _sleep(DELAY);
+  }
+
+  // 2. Categorias (global, não depende de item)
+  var categories = [];
+  try {
+    var catResp = await apiPluggy('categories');
+    if (catResp && catResp.results) categories = catResp.results;
+  } catch (e) {
+    console.warn('pluggy categories', e);
+    _loadErrors.push({ label: 'categories', error: e });
+  }
+  await _sleep(DELAY);
+
+  // 3. Transações de todas as contas
+  var adaptedAccounts = allAccounts.map(pluggyAdaptAccount);
+  var transactions = await pluggyFetchAllTransactions(allAccounts, startVal, endVal);
+
+  // 4. Separa contas bancárias e cartões de crédito
+  var creditCards = allAccounts
+    .filter(function(a) { return a.type === 'CREDIT'; })
+    .map(function(a) {
+      return {
+        id: a.id,
+        name: a.name || a.marketingName || 'Cartão',
+        limit: a.creditData ? a.creditData.creditLimit : 0,
+        available_limit: a.creditData ? a.creditData.availableCreditLimit : 0,
+        _pluggy: true
+      };
+    });
+
+  STATE.accounts = adaptedAccounts;
+  STATE.categories = categories.map(pluggyAdaptCategory);
+  STATE.transactions = transactions;
+  STATE.creditCards = creditCards;
+  STATE.budgets = []; // Pluggy não tem conceito de orçamento
+  STATE.invoices = {};
+  STATE.lastRefreshAt = Date.now();
+  STATE._lastLoadErrors = _loadErrors;
+  updateRefreshLabel();
+
+  if (_loadErrors.length > 0) {
+    var is429 = _loadErrors.some(function(e) { return e.error && e.error.status === 429; });
+    var msg = is429
+      ? '⚠️ A API do Pluggy limitou as requisições. Os dados serão atualizados em alguns minutos.'
+      : '⚠️ Algumas chamadas à API do Pluggy falharam (' + _loadErrors.map(function(e) { return e.label; }).join(', ') + ').';
+    var bannerEl = document.getElementById('__errBanner');
+    var bannerTxt = document.getElementById('__errBannerText');
+    if (bannerEl && bannerTxt) { bannerTxt.textContent = msg; bannerEl.classList.add('show'); }
+  }
+}
 const CHARTS = {};
 const MEMBER_TAGS = {
   alfredo: ['alfredo','alf','consultório','cremers','plantão','hospital'],
@@ -1612,228 +1882,13 @@ function getSortedRootCategories() {
   return sortByName((STATE.categories || []).filter(function(c) { return !c.parent_id || c.parent_id === null; }));
 }
 
-// ─── Exclusão de pagamentos de fatura ───────────────────────────────
-// O usuário marca, via Settings, quais categorias representam
-// "pagamento de fatura de cartão". Transações nessas categorias
-// continuam visíveis na lista de Lançamentos, mas são IGNORADAS
-// em todos os totais, gráficos, alertas e exportações — evitando
-// que os gastos do cartão sejam contados duas vezes (uma na
-// transação original, outra no débito da fatura em conta).
-const INVOICE_PAYMENT_LS_KEY = 'invoicePaymentCategoryIds';
-
-function loadInvoicePaymentSettings() {
-  try {
-    const raw = localStorage.getItem(INVOICE_PAYMENT_LS_KEY);
-    if (!raw) { STATE.invoicePaymentCategoryIds = []; return; }
-    const arr = JSON.parse(raw);
-    STATE.invoicePaymentCategoryIds = Array.isArray(arr)
-      ? arr.map(function(x) { return parseInt(x, 10); }).filter(function(x) { return !isNaN(x); })
-      : [];
-  } catch (_) {
-    STATE.invoicePaymentCategoryIds = [];
-  }
-}
-
-function saveInvoicePaymentSettings(ids) {
-  const clean = (ids || []).map(function(x) { return parseInt(x, 10); }).filter(function(x) { return !isNaN(x); });
-  STATE.invoicePaymentCategoryIds = clean;
-  try { localStorage.setItem(INVOICE_PAYMENT_LS_KEY, JSON.stringify(clean)); } catch (_) {}
-}
-
-function isInvoicePayment(tx) {
-  if (!tx || !tx.category_id) return false;
-  const ids = STATE.invoicePaymentCategoryIds || [];
-  if (!ids.length) return false;
-  // 1) Match direto pela categoria da transação
-  if (ids.indexOf(tx.category_id) !== -1) return true;
-  // 2) Match pelo parent_id — se o usuário marcou a categoria pai
-  // ("Cartão de Crédito", por exemplo), as subcategorias também contam.
-  // Esse caso é muito comum no Organizze e era a causa do "configurei
-  // mas continua errado nos totais".
-  const cat = (STATE.categories || []).find(function(c) { return c.id === tx.category_id; });
-  if (cat && cat.parent_id && ids.indexOf(cat.parent_id) !== -1) return true;
-  return false;
-}
-
-// Filtra transações removendo pagamentos de fatura. Usado por toda a
-// contabilidade (KPIs, gráficos, relatórios, exportações, orçamento).
-function excludeInvoicePayments(txs) {
-  if (!Array.isArray(txs)) return [];
-  const ids = STATE.invoicePaymentCategoryIds || [];
-  if (!ids.length) return txs;
-  return txs.filter(function(t) { return !isInvoicePayment(t); });
-}
-
-// ─── Detecção automática de estornos ───────────────────────────────
-// Um "estorno" é um par de transações (débito, crédito) de mesmo valor
-// absoluto, na mesma conta/cartão, com datas próximas e descrições
-// compatíveis. Ocorrem quando o banco devolve uma cobrança contestada
-// ou quando uma compra no cartão é cancelada. Sem tratamento, ambos
-// lados entram nos totais inflando "Receitas" E "Despesas" do período.
-//
-// A detecção é heurística: só cancela o par quando há sinal forte de
-// estorno (descrição igual OU palavra-chave "estorno/cancel/reembolso/
-// devolução/refund/chargeback/contestação/ajuste"). Janela padrão de
-// 5 dias cobre mesmo dia até estornos de cartão que demoram cair.
-const REVERSAL_KEYWORDS_RE = /\b(?:estorno|canc(?:el)?|reembols|devolu|devolv|refund|charge\s*back|chargeback|contesta|ajuste)/i;
-const REVERSAL_MAX_DAYS = 5;
-const REVERSAL_LS_KEY = 'detectReversalsEnabled';
-
-function loadReversalSettings() {
-  try {
-    const raw = localStorage.getItem(REVERSAL_LS_KEY);
-    // Default: ligado (true). Só desliga se o usuário explicitamente salvou 'false'.
-    STATE.detectReversalsEnabled = raw === null ? true : raw === 'true';
-  } catch (_) {
-    STATE.detectReversalsEnabled = true;
-  }
-}
-
-function saveReversalSettings(enabled) {
-  STATE.detectReversalsEnabled = !!enabled;
-  try { localStorage.setItem(REVERSAL_LS_KEY, STATE.detectReversalsEnabled ? 'true' : 'false'); } catch (_) {}
-}
-
-// Normaliza descrição: minúsculas, sem acentos, sem pontuação, espaços
-// colapsados. Usada para comparar duas descrições "aproximadamente iguais".
-function normalizeDesc(s) {
-  if (!s) return '';
-  return String(s)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Conta dias entre duas datas no formato YYYY-MM-DD (diferença absoluta).
-function dayDiff(d1, d2) {
-  if (!d1 || !d2) return Infinity;
-  const a = new Date(d1 + 'T00:00:00');
-  const b = new Date(d2 + 'T00:00:00');
-  if (isNaN(a) || isNaN(b)) return Infinity;
-  return Math.abs(Math.round((a - b) / 86400000));
-}
-
-// Chave de agrupamento: tipo+ID da fonte + valor absoluto. Dois lançamentos
-// só podem formar um par de estorno se tiverem a mesma chave. Prefixamos
-// com 'card:' / 'acc:' porque credit_card_id e account_id vêm de sequências
-// separadas no Organizze — sem o prefixo, um card.id=1 e um account.id=1
-// cairiam no mesmo grupo e poderiam ser cruzados como estorno indevidamente.
-function _reversalGroupKey(tx) {
-  let source;
-  if (tx.credit_card_id) source = 'card:' + tx.credit_card_id;
-  else if (tx.account_id) source = 'acc:' + tx.account_id;
-  else source = 'none:0';
-  const val = Math.abs(tx.amount_cents || Math.round((tx.amount || 0) * 100));
-  return source + '|' + val;
-}
-
-// Varre a lista de transações e retorna um Set com os IDs dos pares
-// identificados como estorno. Complexidade: O(n) para agrupar +
-// O(k²) dentro de cada grupo (normalmente k pequeno).
-function detectReversals(txs) {
-  const out = new Set();
-  if (!STATE.detectReversalsEnabled) return out;
-  if (!Array.isArray(txs) || txs.length < 2) return out;
-
-  // Agrupa por (conta, valor_absoluto) — já descarta 99% dos pares
-  // impossíveis sem precisar de um loop O(n²) global.
-  const groups = new Map();
-  for (const t of txs) {
-    const val = t.amount_cents || Math.round((t.amount || 0) * 100);
-    if (!val) continue; // ignora valor zero
-    const key = _reversalGroupKey(t);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(t);
-  }
-
-  const used = new Set();
-  for (const group of groups.values()) {
-    if (group.length < 2) continue;
-    // Separa em positivos (crédito) e negativos (débito).
-    const pos = [];
-    const neg = [];
-    for (const t of group) {
-      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
-      if (v > 0) pos.push(t); else neg.push(t);
-    }
-    if (!pos.length || !neg.length) continue;
-
-    // Para cada par (débito, crédito) no grupo, verifica se é estorno.
-    // Scoring: descrição idêntica vale mais que só palavra-chave. Isso
-    // evita que uma transação legítima "capture" o par errado quando
-    // existem várias com o mesmo valor no período.
-    for (const p of pos) {
-      if (used.has(p.id)) continue;
-      let bestMatch = null;
-      let bestScore = -1;
-      let bestDist = Infinity;
-      for (const n of neg) {
-        if (used.has(n.id)) continue;
-        const dist = dayDiff(p.date, n.date);
-        if (dist > REVERSAL_MAX_DAYS) continue;
-        // Descrições normalizadas idênticas ou uma contida na outra.
-        const np = normalizeDesc(p.description);
-        const nn = normalizeDesc(n.description);
-        const sameDesc = np && nn && (np === nn || np.indexOf(nn) !== -1 || nn.indexOf(np) !== -1);
-        // Alguma das descrições contém palavra-chave de estorno.
-        const kw = REVERSAL_KEYWORDS_RE.test(p.description || '') ||
-                   REVERSAL_KEYWORDS_RE.test(n.description || '');
-        if (!kw && !sameDesc) continue;
-        // Score: 2 = descrição bate, 1 = só keyword. Maior ganha;
-        // empate decide pela menor distância em dias.
-        const score = sameDesc ? 2 : 1;
-        if (score > bestScore || (score === bestScore && dist < bestDist)) {
-          bestScore = score;
-          bestDist = dist;
-          bestMatch = n;
-        }
-      }
-      if (bestMatch) {
-        out.add(p.id);
-        out.add(bestMatch.id);
-        used.add(p.id);
-        used.add(bestMatch.id);
-      }
-    }
-  }
-  return out;
-}
-
-// Recalcula STATE.reversalIds a partir de STATE.transactions. Deve ser
-// chamado sempre que a lista de transações é atualizada (applyFilters,
-// refreshData, loadAll, etc.).
-function recomputeReversalIds() {
-  STATE.reversalIds = detectReversals(STATE.transactions || []);
-}
-
-function isReversal(tx) {
-  return !!(tx && STATE.reversalIds && STATE.reversalIds.has(tx.id));
-}
-
-function excludeReversals(txs) {
-  if (!Array.isArray(txs)) return [];
-  if (!STATE.reversalIds || !STATE.reversalIds.size) return txs;
-  return txs.filter(function(t) { return !STATE.reversalIds.has(t.id); });
-}
-
-// Filtro centralizado: remove pagamentos de fatura E pares de estorno.
-// É o que deve ser usado em TODOS os cálculos de totais (KPIs, gráficos,
-// relatórios). As funções antigas (excludeInvoicePayments) continuam
-// existindo só por compatibilidade interna.
-function excludeNonCountable(txs) {
-  return excludeManuallyExcluded(excludeReversals(excludeInvoicePayments(txs)));
-}
-
 // ─── Exclusão manual por lançamento ────────────────────────────────
 // Permite ao usuário marcar, via checkbox no modal de edição, qualquer
-// lançamento como "não contar nos totais". Útil para casos que nem a
-// detecção de fatura nem a de estorno pegam (PIX devolvido manualmente
-// por amigo, venda pessoal, reembolso por fora, etc.). Os IDs são
-// persistidos em localStorage — portanto ficam por dispositivo (não
-// sincronizam entre navegadores/computadores).
+// lançamento como "não contar nos totais". Útil para pagamentos de
+// fatura, transferências entre contas, estornos, PIX devolvido, venda
+// pessoal, reembolso por fora, etc. Os IDs são persistidos em
+// localStorage — portanto ficam por dispositivo (não sincronizam
+// entre navegadores/computadores).
 const MANUAL_EXCLUDE_LS_KEY = 'manuallyExcludedTxIds';
 
 function loadManuallyExcludedIds() {
@@ -1869,49 +1924,6 @@ function excludeManuallyExcluded(txs) {
   if (!Array.isArray(txs)) return [];
   if (!STATE.manuallyExcludedTxIds || !STATE.manuallyExcludedTxIds.size) return txs;
   return txs.filter(function(t) { return !STATE.manuallyExcludedTxIds.has(t.id); });
-}
-
-// Heurística que reconhece descrições típicas de pagamento de fatura.
-// Usada pelo botão "Detectar automaticamente" na tela de Configurações.
-function looksLikeInvoicePayment(description) {
-  if (!description) return false;
-  const d = description.toLowerCase();
-  const patterns = [
-    /pag(amen)?t?o?\s*(de)?\s*fatur/,       // pag fatura, pagamento fatura, pagto de fatura
-    /pag(amen)?t?o?\s*(de)?\s*cart[aã]o/,   // pagamento cartao, pagto cartão
-    /fatur(a)?\s*cart[aã]o/,                 // fatura cartao
-    /fatur(a)?\s+(nubank|itau|santander|bradesco|inter|c6|bb|caixa|xp|neon|will|next|original|pic|pan|safra|pagbank)/,
-    /d[eé]bito\s*autom[aá]tico\s*(da)?\s*fatur/,
-    /quita[cç][aã]o\s*(da)?\s*fatur/,
-    /boleto\s*cart[aã]o/
-  ];
-  return patterns.some(function(re) { return re.test(d); });
-}
-
-// Heurística para transferência entre contas próprias. Evita pegar PIX/TED
-// avulsos para terceiros — só casa padrões explícitos de "transferência
-// entre contas" ou movimentações entre bancos conhecidos do usuário.
-function looksLikeTransfer(description) {
-  if (!description) return false;
-  const d = description.toLowerCase();
-  const patterns = [
-    /transfer[eê]ncia\s*entre\s*contas/,
-    /transf\.?\s*entre\s*contas/,
-    /transfer[eê]ncia\s*(enviada|recebida|interna)/,
-    /transf\.?\s*(enviada|recebida|interna)/,
-    /movimenta[cç][aã]o\s*(entre|interna)/,
-    /aplic[aã]ç[aã]o\s*autom[aá]tica/,     // aplicação automática entre conta corrente e poupança
-    /resgate\s*autom[aá]tico/,              // resgate automático
-    /débito\s*poupan[cç]a.*corrente/,
-    /cr[eé]dito\s*poupan[cç]a.*corrente/
-  ];
-  return patterns.some(function(re) { return re.test(d); });
-}
-
-// Heurística combinada — reconhece fatura OU transferência. Usada pelo
-// auto-detect para decidir se o lançamento deve ser ignorado.
-function looksLikeExcluded(description) {
-  return looksLikeInvoicePayment(description) || looksLikeTransfer(description);
 }
 
 function monthsAgo(n) {
@@ -1950,6 +1962,12 @@ function getOrgCreds() {
   };
 }
 
+// Delay helper — usado para espaçar chamadas e evitar rate-limit/WAF.
+function _sleep(ms) { return new Promise(function(resolve) { setTimeout(resolve, ms); }); }
+
+// Contabiliza erros consecutivos da API para backoff adaptativo.
+var _apiConsecutiveErrors = 0;
+
 async function api(endpoint, options) {
   if (!options) options = {};
   var creds = getOrgCreds();
@@ -1962,7 +1980,7 @@ async function api(endpoint, options) {
   // Normaliza: remove barras iniciais para não virar "rest/v2//transactions"
   var clean = String(endpoint).replace(/^\/+/, '');
   var url = '/api/proxy?endpoint=' + encodeURIComponent(clean);
-  var opts = {
+  var fetchOpts = {
     method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -1972,15 +1990,37 @@ async function api(endpoint, options) {
   };
   if (options.body !== undefined && options.body !== null) {
     // Aceita objeto ou string; não faz dupla serialização.
-    opts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+    fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
   }
-  var r = await fetch(url, opts);
-  var text = await r.text();
-  var data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch (_) { data = text; }
-  }
-  if (!r.ok) {
+
+  // Retry com backoff exponencial para erros de rede, 429 e 5xx.
+  // Status 401/403/404 NÃO são retentados (erro de credencial/rota).
+  var maxRetries = options._noRetry ? 0 : 3;
+  var lastErr = null;
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      var delay = Math.min(2000 * Math.pow(2, attempt - 1), 16000); // 2s, 4s, 8s
+      console.warn('[api] retry ' + attempt + '/' + maxRetries + ' em ' + delay + 'ms — ' + clean);
+      await _sleep(delay);
+    }
+    try {
+      var r = await fetch(url, fetchOpts);
+    } catch (netErr) {
+      // Erro de rede (offline, DNS, timeout) — retenta
+      lastErr = netErr;
+      lastErr.status = 0;
+      continue;
+    }
+    var text = await r.text();
+    var data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (_) { data = text; }
+    }
+    if (r.ok) {
+      _apiConsecutiveErrors = 0;
+      return data;
+    }
+    // Monta erro detalhado
     var reason = '';
     if (data && typeof data === 'object') {
       reason = data.error || data.message || data.errors || '';
@@ -1988,17 +2028,25 @@ async function api(endpoint, options) {
     } else if (typeof data === 'string') {
       reason = data;
     }
-    var err = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
-    err.status = r.status;
-    err.data = data;
-    throw err;
+    lastErr = new Error('API ' + r.status + (reason ? ': ' + reason : ''));
+    lastErr.status = r.status;
+    lastErr.data = data;
+    // Só retenta em 429 (rate limit) ou 5xx (erro do servidor)
+    var retryable = r.status === 429 || r.status >= 500;
+    if (!retryable) break;
   }
-  return data;
+  _apiConsecutiveErrors++;
+  throw lastErr;
 }
 
 function setLoginStatus(msg) { var el = document.getElementById('loginStatus'); if (el) el.textContent = msg; }
 
 async function loadAll() {
+  // Despacha para o backend ativo (Organizze ou Pluggy)
+  if (getActiveBackend() === 'pluggy') {
+    return loadAllPluggy();
+  }
+  // ── Backend Organizze (original) ──
   // Preserva o período selecionado pelo usuário: usa os inputs de filtro se
   // já estiverem preenchidos (ou o STATE.txFilterRange), caindo para o mês
   // atual apenas na primeira carga. Isso evita que o auto-refresh devolva o
@@ -2015,34 +2063,72 @@ async function loadAll() {
   if (endInput && !endInput.value) endInput.value = endVal;
   var start = startVal;
   var end = endVal;
-  var results = await Promise.all([
-    api('accounts').catch(function(e){ console.warn('accounts', e); return []; }),
-    api('categories').catch(function(e){ console.warn('categories', e); return []; }),
-    api('transactions?start_date=' + start + '&end_date=' + end).catch(function(e){ console.warn('transactions', e); return []; }),
-    api('credit_cards').catch(function(e){ console.warn('credit_cards', e); return []; }),
-    api('budgets').catch(function(e){ console.warn('budgets', e); return []; })
-  ]);
-  STATE.accounts    = Array.isArray(results[0]) ? results[0] : [];
-  STATE.categories  = Array.isArray(results[1]) ? results[1] : [];
-  STATE.transactions = Array.isArray(results[2]) ? results[2] : [];
-  STATE.creditCards = Array.isArray(results[3]) ? results[3] : [];
-  STATE.budgets     = Array.isArray(results[4]) ? results[4] : [];
-  recomputeReversalIds();
+  // Chamadas sequenciais com delay entre elas para não disparar rate-limit/WAF.
+  // Antes eram 5 em paralelo — esse burst é a causa mais provável de bloqueio.
+  var INTER_CALL_DELAY = 400; // ms entre cada chamada
+  var _loadErrors = [];
+  async function _seq(label, fn) {
+    try { return await fn(); }
+    catch (e) { console.warn(label, e); _loadErrors.push({ label: label, error: e }); return []; }
+  }
+  var r0 = await _seq('accounts',     function() { return api('accounts'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r1 = await _seq('categories',   function() { return api('categories'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r2 = await _seq('transactions', function() { return api('transactions?start_date=' + start + '&end_date=' + end); });
+  await _sleep(INTER_CALL_DELAY);
+  var r3 = await _seq('credit_cards', function() { return api('credit_cards'); });
+  await _sleep(INTER_CALL_DELAY);
+  var r4 = await _seq('budgets',      function() { return api('budgets'); });
+
+  STATE.accounts     = Array.isArray(r0) ? r0 : [];
+  STATE.categories   = Array.isArray(r1) ? r1 : [];
+  STATE.transactions = Array.isArray(r2) ? r2 : [];
+  STATE.creditCards  = Array.isArray(r3) ? r3 : [];
+  STATE.budgets      = Array.isArray(r4) ? r4 : [];
   STATE.invoices = {};
   for (var i = 0; i < STATE.creditCards.length; i++) {
     var card = STATE.creditCards[i];
     try {
       STATE.invoices[card.id] = await api('credit_cards/' + card.id + '/invoices');
-    } catch (e) { console.warn('invoices ' + card.id, e); }
+      if (i < STATE.creditCards.length - 1) await _sleep(INTER_CALL_DELAY);
+    } catch (e) { console.warn('invoices ' + card.id, e); _loadErrors.push({ label: 'invoices/' + card.id, error: e }); }
   }
   STATE.lastRefreshAt = Date.now();
+  STATE._lastLoadErrors = _loadErrors;
   updateRefreshLabel();
+
+  // Feedback visível quando alguma chamada falhou
+  if (_loadErrors.length > 0) {
+    var is429 = _loadErrors.some(function(e) { return e.error && e.error.status === 429; });
+    var is403 = _loadErrors.some(function(e) { return e.error && e.error.status === 403; });
+    var isNet = _loadErrors.some(function(e) { return e.error && (e.error.status === 0 || !e.error.status); });
+    var msg;
+    if (is429) {
+      msg = '⚠️ A API do Organizze limitou as requisições (rate limit). Os dados serão atualizados automaticamente em alguns minutos.';
+    } else if (is403) {
+      msg = '⚠️ Acesso bloqueado pela API do Organizze (403). Pode ser um bloqueio temporário do WAF — aguarde alguns minutos e tente novamente.';
+    } else if (isNet) {
+      msg = '⚠️ Erro de rede ao conectar com o Organizze. Verifique sua conexão.';
+    } else {
+      msg = '⚠️ Algumas chamadas à API do Organizze falharam (' + _loadErrors.map(function(e) { return e.label; }).join(', ') + '). Os dados podem estar incompletos.';
+    }
+    // Exibe mensagem amigável no banner de erro existente
+    var bannerEl = document.getElementById('__errBanner');
+    var bannerTxt = document.getElementById('__errBannerText');
+    if (bannerEl && bannerTxt) {
+      bannerTxt.textContent = msg;
+      bannerEl.classList.add('show');
+    } else {
+      console.warn(msg);
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════
 //  AUTO-REFRESH (polling automático + botão manual)
 // ═══════════════════════════════════════════════
-const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+const AUTO_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutos (reduzido de 5 para aliviar rate-limit)
 
 function updateRefreshLabel() {
   var el = document.getElementById('lastRefreshLabel');
@@ -2057,6 +2143,10 @@ function updateRefreshLabel() {
   else if (diff < 60) txt = '✓ Há ' + diff + 's';
   else if (diff < 3600) txt = '✓ Há ' + Math.floor(diff / 60) + ' min';
   else txt = '✓ Há ' + Math.floor(diff / 3600) + 'h';
+  // Indica se a última carga teve falhas parciais
+  if (STATE._lastLoadErrors && STATE._lastLoadErrors.length > 0) {
+    txt += ' (parcial ⚠️)';
+  }
   el.textContent = txt;
 }
 
@@ -2114,14 +2204,28 @@ async function refreshNow() {
 
 function startAutoRefresh() {
   stopAutoRefresh();
-  STATE.autoRefreshTimer = setInterval(function() {
-    refreshData({ silent: true });
-  }, AUTO_REFRESH_INTERVAL_MS);
+  _scheduleNextRefresh();
+}
+
+// Agenda o próximo refresh com intervalo adaptativo:
+// - Se a última carga teve erros, dobra o intervalo (até 30 min).
+// - Se tudo OK, volta ao intervalo base (10 min).
+function _scheduleNextRefresh() {
+  var interval = AUTO_REFRESH_INTERVAL_MS;
+  if (_apiConsecutiveErrors > 0) {
+    // Backoff: 20 min, 30 min, 30 min...
+    interval = Math.min(AUTO_REFRESH_INTERVAL_MS * Math.pow(2, Math.min(_apiConsecutiveErrors, 2)), 30 * 60 * 1000);
+    console.warn('[auto-refresh] backoff ativo — próximo refresh em ' + Math.round(interval / 1000) + 's (erros consecutivos: ' + _apiConsecutiveErrors + ')');
+  }
+  STATE.autoRefreshTimer = setTimeout(async function() {
+    await refreshData({ silent: true });
+    _scheduleNextRefresh(); // re-agenda com intervalo atualizado
+  }, interval);
 }
 
 function stopAutoRefresh() {
   if (STATE.autoRefreshTimer) {
-    clearInterval(STATE.autoRefreshTimer);
+    clearTimeout(STATE.autoRefreshTimer);
     STATE.autoRefreshTimer = null;
   }
 }
@@ -2226,12 +2330,21 @@ function getMustChangePassword() {
 }
 
 async function continueAfterLogin() {
-  var creds = getOrgCreds();
-  if (!creds.email || !creds.token) {
+  // Inicializa backend ativo salvo no localStorage
+  STATE.backend = getActiveBackend();
+  STATE.pluggyItemIds = getPluggyItemIds();
+
+  // Verifica se o backend ativo tem credenciais configuradas
+  var hasOrgCreds = (function() { var c = getOrgCreds(); return !!(c.email && c.token); })();
+  var hasPluggyCreds = (function() { var c = getPluggyCreds(); return !!(c.clientId && c.clientSecret); })();
+  var activeBackend = getActiveBackend();
+  var hasActiveCreds = (activeBackend === 'organizze') ? hasOrgCreds : hasPluggyCreds;
+
+  if (!hasActiveCreds) {
     try {
       renderPage('settings');
-      var s = document.getElementById('orgConfigStatus');
-      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso ao Organizze para começar.</span>';
+      var s = document.getElementById(activeBackend === 'pluggy' ? 'pluggyConfigStatus' : 'orgConfigStatus');
+      if (s) s.innerHTML = '<span style="color: var(--blue);">👋 Bem-vindo! Configure seu acesso para começar.</span>';
     } catch (e) { showError('renderPage(settings)', e); }
     return;
   }
@@ -2806,7 +2919,6 @@ async function doLogout() {
   STATE.invoices = {};
   STATE.lastRefreshAt = null;
   STATE.selectedTxIds.clear();
-  STATE.reversalIds.clear();
   STATE.fixedBills = [];
   STATE.fixedBillsLoadedAt = null;
   // Nota: credenciais do Organizze são preservadas (mais conveniente).
@@ -2856,8 +2968,15 @@ async function checkSavedLogin() {
     return;
   }
 
-  var creds = getOrgCreds();
-  if (!creds.email || !creds.token) {
+  // Inicializa backend
+  STATE.backend = getActiveBackend();
+  STATE.pluggyItemIds = getPluggyItemIds();
+  var activeBackend = getActiveBackend();
+  var hasOrgCreds = (function() { var c = getOrgCreds(); return !!(c.email && c.token); })();
+  var hasPluggyCreds = (function() { var c = getPluggyCreds(); return !!(c.clientId && c.clientSecret); })();
+  var hasActiveCreds = (activeBackend === 'organizze') ? hasOrgCreds : hasPluggyCreds;
+
+  if (!hasActiveCreds) {
     try { renderPage('settings'); } catch (e) { showError('checkSavedLogin:renderSettings', e); }
     return;
   }
@@ -2872,6 +2991,7 @@ async function checkSavedLogin() {
 //  ORGANIZZE CONFIG (Settings page)
 // ═══════════════════════════════════════════════
 function renderSettings() {
+  // Organizze fields
   var e = localStorage.getItem('org_email') || '';
   var t = localStorage.getItem('org_token') || '';
   var ei = document.getElementById('orgEmailInput');
@@ -2880,199 +3000,168 @@ function renderSettings() {
   if (ti) ti.value = t;
   var s = document.getElementById('orgConfigStatus');
   if (s && !s.innerHTML) s.textContent = '';
-  renderInvoicePayCategoryList();
-  // Sincroniza o checkbox do toggle de estornos com o estado persistido
-  var revT = document.getElementById('reversalToggle');
-  if (revT) revT.checked = !!STATE.detectReversalsEnabled;
-  renderReversalStatus();
+
+  // Pluggy fields
+  var pc = getPluggyCreds();
+  var pci = document.getElementById('pluggyClientIdInput');
+  var psi = document.getElementById('pluggyClientSecretInput');
+  if (pci) pci.value = pc.clientId;
+  if (psi) psi.value = pc.clientSecret;
+
+  // Backend toggle visual
+  updateBackendToggleUI();
+  renderPluggyItems();
 }
 
-// ─── Settings: toggle de detecção de estornos ─────────────────────
-function onReversalToggleChange(enabled) {
-  saveReversalSettings(!!enabled);
-  recomputeReversalIds();
-  renderReversalStatus();
-  // Re-renderiza a página atual para refletir a mudança nos totais imediatamente.
-  if (STATE.currentPage === 'dashboard') renderDashboard();
-  if (STATE.currentPage === 'transactions') populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
-  if (STATE.currentPage === 'family') renderFamily();
-  if (STATE.currentPage === 'reports') renderReports();
+// ─── Backend toggle ───────────────────────────────────────────────
+function switchBackend(backend) {
+  setActiveBackend(backend);
+  updateBackendToggleUI();
+  // Recarrega dados com o novo backend
+  refreshData({ force: true });
 }
 
-function renderReversalStatus() {
-  const el = document.getElementById('reversalStatus');
+function updateBackendToggleUI() {
+  var active = getActiveBackend();
+  STATE.backend = active;
+  var btnOrg = document.getElementById('btnBackendOrg');
+  var btnPluggy = document.getElementById('btnBackendPluggy');
+  var settingsOrg = document.getElementById('settingsOrganizze');
+  var settingsPluggy = document.getElementById('settingsPluggy');
+  var statusEl = document.getElementById('backendStatus');
+  if (btnOrg && btnPluggy) {
+    var activeStyle = 'background:var(--green-600);color:#fff;';
+    var inactiveStyle = 'background:var(--bg-input);color:var(--text-secondary);';
+    btnOrg.style.cssText = 'flex:1;padding:12px 16px;border:none;font-family:Outfit,sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;' + (active === 'organizze' ? activeStyle : inactiveStyle);
+    btnPluggy.style.cssText = 'flex:1;padding:12px 16px;border:none;font-family:Outfit,sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;' + (active === 'pluggy' ? activeStyle : inactiveStyle);
+  }
+  if (settingsOrg) settingsOrg.style.display = (active === 'organizze') ? '' : 'none';
+  if (settingsPluggy) settingsPluggy.style.display = (active === 'pluggy') ? '' : 'none';
+  if (statusEl) {
+    statusEl.textContent = active === 'organizze'
+      ? 'Usando API do Organizze para buscar dados bancários.'
+      : 'Usando API do Pluggy (Open Finance) para buscar dados bancários.';
+  }
+}
+
+// ─── Pluggy config ────────────────────────────────────────────────
+async function savePluggyConfig() {
+  var clientId = document.getElementById('pluggyClientIdInput').value.trim();
+  var clientSecret = document.getElementById('pluggyClientSecretInput').value.trim();
+  var status = document.getElementById('pluggyConfigStatus');
+  if (!clientId || !clientSecret) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Preencha Client ID e Client Secret.</span>';
+    return;
+  }
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Validando credenciais...</span>';
+  savePluggyCreds(clientId, clientSecret);
+  try {
+    // Testa autenticação chamando o endpoint de categorias (leve)
+    await apiPluggy('categories');
+    if (status) status.innerHTML = '<span style="color:var(--green-600);">✓ Credenciais válidas! Conecte seus bancos abaixo.</span>';
+  } catch (e) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro ao validar: ' + (e.message || 'desconhecido') + '</span>';
+  }
+}
+
+function clearPluggyConfig() {
+  if (!confirm('Remover as credenciais do Pluggy deste dispositivo?')) return;
+  localStorage.removeItem('pluggy_client_id');
+  localStorage.removeItem('pluggy_client_secret');
+  localStorage.removeItem('pluggy_item_ids');
+  STATE.pluggyItemIds = [];
+  document.getElementById('pluggyClientIdInput').value = '';
+  document.getElementById('pluggyClientSecretInput').value = '';
+  document.getElementById('pluggyConfigStatus').innerHTML = '<span style="color:var(--text-secondary);">Credenciais removidas.</span>';
+  renderPluggyItems();
+}
+
+// ─── Pluggy Items (bancos conectados) ─────────────────────────────
+function renderPluggyItems() {
+  var el = document.getElementById('pluggyItemsList');
   if (!el) return;
-  if (!STATE.detectReversalsEnabled) {
-    el.innerHTML = '<span style="color:var(--text-muted);">Desligado — estornos entram normalmente nos totais.</span>';
+  var ids = getPluggyItemIds();
+  if (!ids.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Nenhum banco conectado ainda.</p>';
     return;
   }
-  const n = STATE.reversalIds ? STATE.reversalIds.size : 0;
-  if (n === 0) {
-    el.innerHTML = '<span style="color:var(--text-muted);">Ligado — nenhum par de estorno detectado no período atual.</span>';
-  } else {
-    const pairs = n / 2;
-    el.innerHTML = '<span style="color:var(--green-600);">✅ Ligado — ' + pairs + ' par' + (pairs === 1 ? '' : 'es') + ' de estorno detectado' + (pairs === 1 ? '' : 's') + ' no período atual (' + n + ' lançamentos ignorados).</span>';
-  }
-}
-
-// ─── Settings: pagamento de fatura ─────────────────────────────────
-function renderInvoicePayCategoryList() {
-  const list = document.getElementById('invoicePayCatList');
-  if (!list) return;
-  const cats = getSortedRootCategories();
-  const selected = STATE.invoicePaymentCategoryIds || [];
-  if (!cats.length) {
-    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:4px;">Nenhuma categoria carregada ainda. Conecte o Organizze primeiro.</div>';
-    return;
-  }
-  const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  list.innerHTML = cats.map(function(c) {
-    const checked = selected.indexOf(c.id) !== -1 ? 'checked' : '';
-    const color = (c.color && /^#[0-9a-fA-F]{6}$/.test(c.color)) ? c.color : '#9E9E9E';
-    return '<label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:4px 2px;">'
-      + '<input type="checkbox" class="invoice-pay-cat" data-cat-id="' + c.id + '" ' + checked + ' />'
-      + '<span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:' + color + ';border:1px solid var(--border);"></span>'
-      + '<span>' + escHtml(c.name) + '</span>'
-      + '</label>';
+  el.innerHTML = ids.map(function(id, i) {
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-input);border-radius:8px;margin-bottom:6px;">'
+      + '<span style="font-size:13px;font-family:Space Mono,monospace;color:var(--text-secondary);">🏦 ' + id.substring(0, 8) + '...</span>'
+      + '<button class="btn btn-secondary btn-sm" onclick="removePluggyItem(' + i + ')" style="font-size:11px;">🗑️ Remover</button>'
+      + '</div>';
   }).join('');
 }
 
-function saveInvoicePayCategories() {
-  const checks = document.querySelectorAll('#invoicePayCatList input.invoice-pay-cat:checked');
-  const ids = Array.from(checks).map(function(el) { return parseInt(el.getAttribute('data-cat-id'), 10); });
-  saveInvoicePaymentSettings(ids);
-  const status = document.getElementById('invoicePayStatus');
-  if (status) {
-    status.innerHTML = ids.length
-      ? '<span style="color:var(--green-600);">✅ ' + ids.length + ' categoria' + (ids.length === 1 ? '' : 's') + ' marcada' + (ids.length === 1 ? '' : 's') + ' como pagamento de fatura. Totais atualizados.</span>'
-      : '<span style="color:var(--orange);">ℹ️ Nenhuma categoria marcada — nada será excluído dos totais.</span>';
-  }
-  // Re-renderiza a página atual para refletir os novos totais imediatamente
-  if (STATE.currentPage === 'dashboard') renderDashboard();
-  if (STATE.currentPage === 'transactions') populateTxTable(STATE.txLastFiltered.length ? STATE.txLastFiltered : STATE.transactions);
-  if (STATE.currentPage === 'family') renderFamily();
-  if (STATE.currentPage === 'reports') renderReports();
+function removePluggyItem(index) {
+  var ids = getPluggyItemIds();
+  if (!confirm('Remover esta conexão bancária?')) return;
+  ids.splice(index, 1);
+  savePluggyItemIds(ids);
+  renderPluggyItems();
 }
 
-// Auto-detecção: varre as transações do período atual e mostra as que
-// parecem pagamento de fatura. Permite ao usuário confirmar e criar
-// (ou escolher) uma categoria para marcá-las em massa.
-// Encontra (ou cria) uma categoria no Organizze a partir de uma lista de
-// nomes candidatos (case-insensitive). Se nenhum bater, cria uma nova com
-// o primeiro nome da lista. Usada pelo auto-detect.
-async function _findOrCreateCategory(candidates, color) {
-  const cats = STATE.categories || [];
-  const lowers = candidates.map(function(n) { return n.toLowerCase(); });
-  const existing = cats.find(function(c) {
-    const n = (c.name || '').toLowerCase();
-    return (!c.parent_id || c.parent_id === null) && lowers.indexOf(n) !== -1;
+// ─── Pluggy Connect Widget ────────────────────────────────────────
+function openPluggyConnect() {
+  var creds = getPluggyCreds();
+  if (!creds.clientId || !creds.clientSecret) {
+    alert('Salve suas credenciais do Pluggy primeiro.');
+    return;
+  }
+  var status = document.getElementById('pluggyConfigStatus');
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Obtendo token de conexão...</span>';
+
+  // Pede ao proxy um connect_token
+  apiPluggy('connect_token', {
+    method: 'POST',
+    body: { options: { avoidDuplicates: true } }
+  }).then(function(resp) {
+    var token = resp && resp.accessToken;
+    if (!token) {
+      if (status) status.innerHTML = '<span style="color:var(--red);">Erro: não foi possível obter token de conexão.</span>';
+      return;
+    }
+    if (status) status.innerHTML = '';
+    // Carrega o widget do Pluggy via CDN (se ainda não carregado)
+    _loadPluggyWidget(function() {
+      var pluggyConnect = new PluggyConnect({
+        connectToken: token,
+        includeSandbox: false,
+        onSuccess: function(itemData) {
+          var itemId = itemData && itemData.item && itemData.item.id;
+          if (itemId) {
+            var ids = getPluggyItemIds();
+            if (ids.indexOf(itemId) === -1) {
+              ids.push(itemId);
+              savePluggyItemIds(ids);
+            }
+            renderPluggyItems();
+            if (status) status.innerHTML = '<span style="color:var(--green-600);">✓ Banco conectado com sucesso!</span>';
+          }
+        },
+        onError: function(err) {
+          console.error('Pluggy Connect error:', err);
+          if (status) status.innerHTML = '<span style="color:var(--red);">Erro na conexão: ' + (err.message || JSON.stringify(err)) + '</span>';
+        },
+        onClose: function() {
+          console.log('Pluggy Connect fechado.');
+        }
+      });
+      pluggyConnect.init();
+    });
+  }).catch(function(e) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro ao obter token: ' + (e.message || 'desconhecido') + '</span>';
   });
-  if (existing) return existing;
-  const created = await api('categories', { method: 'POST', body: { name: candidates[0], color: color || '#9E9E9E' } });
-  if (!created || !created.id) throw new Error('resposta inesperada ao criar categoria');
-  STATE.categories.push(created);
-  return created;
 }
 
-async function autoDetectInvoicePayments() {
-  const status = document.getElementById('invoicePayStatus');
-  const txs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
-  if (!txs.length) {
-    status.innerHTML = '<span style="color:var(--red);">Carregue os lançamentos primeiro (abra "Lançamentos").</span>';
-    return;
-  }
-  // Classifica cada tx em um dos dois buckets.
-  const invoiceMatches = [];
-  const transferMatches = [];
-  txs.forEach(function(t) {
-    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
-    if (looksLikeInvoicePayment(t.description)) {
-      // Pagamento de fatura: só débitos fazem sentido
-      if (v < 0) invoiceMatches.push(t);
-    } else if (looksLikeTransfer(t.description)) {
-      // Transferência: pode ser débito OU crédito (as duas pontas)
-      transferMatches.push(t);
-    }
-  });
-
-  const totalMatches = invoiceMatches.length + transferMatches.length;
-  if (!totalMatches) {
-    status.innerHTML = '<span style="color:var(--orange);">ℹ️ Nenhum pagamento de fatura ou transferência entre contas encontrado nas descrições do período atual.</span>';
-    return;
-  }
-
-  // Monta prévia combinada para o confirm
-  const fmtLine = function(t) {
-    return '• ' + (t.description || '').substring(0, 40) + '  ' + centsToReal(Math.abs(t.amount_cents || Math.round((t.amount || 0) * 100)));
-  };
-  let preview = '';
-  if (invoiceMatches.length) {
-    preview += '💳 Pagamento de fatura (' + invoiceMatches.length + '):\n' + invoiceMatches.slice(0, 5).map(fmtLine).join('\n');
-    if (invoiceMatches.length > 5) preview += '\n... e mais ' + (invoiceMatches.length - 5);
-    preview += '\n\n';
-  }
-  if (transferMatches.length) {
-    preview += '🔁 Transferência entre contas (' + transferMatches.length + '):\n' + transferMatches.slice(0, 5).map(fmtLine).join('\n');
-    if (transferMatches.length > 5) preview += '\n... e mais ' + (transferMatches.length - 5);
-    preview += '\n\n';
-  }
-  const msg = '🔍 Encontrei ' + totalMatches + ' lançamento' + (totalMatches === 1 ? '' : 's') + ' para ignorar nos totais:\n\n' + preview + 'Deseja marcá-los com as categorias apropriadas e excluí-los dos totais?';
-  if (!confirm(msg)) return;
-
-  // Resolve/cria as categorias necessárias
-  status.innerHTML = '<span style="color:var(--text-secondary);">Preparando categorias no Organizze...</span>';
-  let invoiceCat = null;
-  let transferCat = null;
-  try {
-    if (invoiceMatches.length) {
-      invoiceCat = await _findOrCreateCategory(
-        ['Pagamento de fatura', 'Pagamento fatura', 'Fatura cartão', 'Pagamento de cartão'],
-        '#9E9E9E'
-      );
-    }
-    if (transferMatches.length) {
-      transferCat = await _findOrCreateCategory(
-        ['Transferência entre contas', 'Transferencia entre contas', 'Transferência', 'Transferencia'],
-        '#78909C'
-      );
-    }
-  } catch (e) {
-    status.innerHTML = '<span style="color:var(--red);">❌ Erro ao criar categoria: ' + (e.message || 'desconhecido') + '</span>';
-    return;
-  }
-
-  // Aplica categoria a cada lançamento via PUT
-  status.innerHTML = '<span style="color:var(--text-secondary);">Atualizando ' + totalMatches + ' lançamento' + (totalMatches === 1 ? '' : 's') + '...</span>';
-  let ok = 0, fail = 0;
-  const assignments = [];
-  if (invoiceCat) invoiceMatches.forEach(function(t) { assignments.push({ tx: t, cat: invoiceCat }); });
-  if (transferCat) transferMatches.forEach(function(t) { assignments.push({ tx: t, cat: transferCat }); });
-
-  for (const a of assignments) {
-    if (a.tx.category_id === a.cat.id) { ok++; continue; }
-    try {
-      await api('transactions/' + a.tx.id, { method: 'PUT', body: { category_id: a.cat.id } });
-      a.tx.category_id = a.cat.id;
-      ok++;
-    } catch (e) {
-      console.warn('autoDetect fail', a.tx.id, e);
-      fail++;
-    }
-  }
-
-  // Adiciona as categorias usadas na lista de exclusão
-  const idsSet = new Set(STATE.invoicePaymentCategoryIds || []);
-  if (invoiceCat) idsSet.add(invoiceCat.id);
-  if (transferCat) idsSet.add(transferCat.id);
-  saveInvoicePaymentSettings(Array.from(idsSet));
-
-  // Re-renderiza o checkbox list e os totais
-  renderInvoicePayCategoryList();
-
-  const parts = [];
-  if (invoiceCat && invoiceMatches.length) parts.push(invoiceMatches.length + ' fatura');
-  if (transferCat && transferMatches.length) parts.push(transferMatches.length + ' transferência' + (transferMatches.length === 1 ? '' : 's'));
-  status.innerHTML = '<span style="color:var(--green-600);">✅ ' + ok + ' lançamento' + (ok === 1 ? '' : 's') + ' marcado' + (ok === 1 ? '' : 's') + ' (' + parts.join(' + ') + ')' + (fail ? ' · ❌ ' + fail + ' falha' + (fail === 1 ? '' : 's') : '') + '. Categorias adicionadas à lista de exclusão.</span>';
+// Carrega o script do Pluggy Connect Widget sob demanda
+function _loadPluggyWidget(cb) {
+  if (typeof PluggyConnect !== 'undefined') { cb(); return; }
+  var script = document.createElement('script');
+  script.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js';
+  script.onload = cb;
+  script.onerror = function() { alert('Erro ao carregar o widget do Pluggy. Verifique sua conexão.'); };
+  document.head.appendChild(script);
 }
 
 async function saveOrgConfig() {
@@ -3117,13 +3206,21 @@ function clearOrgConfig() {
   STATE.creditCards = [];
   STATE.budgets = [];
   STATE.invoices = {};
-  STATE.reversalIds.clear();
   document.getElementById('orgEmailInput').value = '';
   document.getElementById('orgTokenInput').value = '';
   document.getElementById('orgConfigStatus').innerHTML = '<span style="color: var(--text-secondary);">Credenciais removidas.</span>';
 }
 
-async function fetchTransactions(s, e) { return api('transactions?start_date=' + s + '&end_date=' + e); }
+async function fetchTransactions(s, e) {
+  if (getActiveBackend() === 'pluggy') {
+    // No Pluggy as transações vêm por conta; busca todas as contas e depois as transações
+    var accs = STATE.accounts || [];
+    if (!accs.length) return [];
+    var rawAccs = accs.map(function(a) { return a._raw || a; });
+    return pluggyFetchAllTransactions(rawAccs, s, e);
+  }
+  return api('transactions?start_date=' + s + '&end_date=' + e);
+}
 
 // ═══════════════════════════════════════════════
 //  NAVIGATION
@@ -3209,10 +3306,8 @@ function safeSection(name, fn) {
 
 function renderDashboard() {
   const allTxs = Array.isArray(STATE.transactions) ? STATE.transactions : [];
-  // Ignora pagamentos de fatura E estornos em todos os totais/gráficos para
-  // evitar contagem dupla (gasto no cartão + débito da fatura em conta) e
-  // inflação por pares original↔estorno (saída em um dia + retorno no próximo).
-  const txs = excludeNonCountable(allTxs);
+  // Ignora lançamentos marcados manualmente como excluídos dos totais.
+  const txs = excludeManuallyExcluded(allTxs);
   let income = 0, expense = 0;
   const catMap = {};
 
@@ -3391,7 +3486,6 @@ async function applyFilters() {
   STATE.txFilterRange = { start: start, end: end };
   try {
     STATE.transactions = await fetchTransactions(start, end);
-    recomputeReversalIds();
     const txs = getFilteredTransactions();
     STATE.txLastFiltered = txs;
     STATE.txPage = 1;
@@ -3502,9 +3596,9 @@ function renderTxCategoryChart(txs) {
   const listEl = document.getElementById('txCategoryChartList');
   if (!wrap || !canvas || !listEl) return;
 
-  // Só considera DESPESAS (valor < 0), ignorando pagamentos de fatura,
-  // transferências e pares de estorno (excludeNonCountable cuida de tudo).
-  const clean = excludeNonCountable(Array.isArray(txs) ? txs : []);
+  // Só considera DESPESAS (valor < 0), ignorando lançamentos marcados
+  // manualmente como excluídos dos totais.
+  const clean = excludeManuallyExcluded(Array.isArray(txs) ? txs : []);
   const catMap = {};
   clean.forEach(function(t) {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -3581,28 +3675,18 @@ function populateTxTable(txs) {
   const body = document.getElementById('transactionsBody');
   updateSortIndicators();
 
-  // Atualiza a barra de resumo (totais já ignoram pagamentos de fatura)
+  // Atualiza a barra de resumo (totais ignoram lançamentos excluídos manualmente)
   updateTxSummaryBar(sorted);
 
-  // Contabiliza transações ignoradas (manual + fatura + estorno) para o rodapé.
-  // Ordem de prioridade: manual > estorno > fatura (mesma ordem do selo).
+  // Contabiliza transações ignoradas manualmente para o rodapé.
   let manualCount = 0, manualCents = 0;
-  let invoiceCount = 0, invoiceCents = 0;
-  let reversalCount = 0, reversalCents = 0;
   page.forEach(function(t) {
-    const v = t.amount_cents || Math.round((t.amount || 0) * 100);
     if (isManuallyExcluded(t)) {
+      const v = t.amount_cents || Math.round((t.amount || 0) * 100);
       manualCount++;
       manualCents += Math.abs(v);
-    } else if (isReversal(t)) {
-      reversalCount++;
-      reversalCents += Math.abs(v);
-    } else if (isInvoicePayment(t)) {
-      invoiceCount++;
-      invoiceCents += Math.abs(v);
     }
   });
-  const excludedCount = manualCount + invoiceCount + reversalCount;
 
   if (page.length === 0) {
     body.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="emoji">📭</div><div>Nenhum lançamento encontrado</div></div></td></tr>`;
@@ -3618,30 +3702,12 @@ function populateTxTable(txs) {
       const notesCell = notes
         ? `<span style="font-size:12px;color:var(--text-secondary);" title="${notesEsc}">${notesEsc.length > 30 ? notesEsc.substring(0, 30) + '…' : notesEsc}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
-      const isManual = isManuallyExcluded(t);
-      const isInvoice = isInvoicePayment(t);
-      const isRev = isReversal(t);
-      const isExcluded = isManual || isInvoice || isRev;
+      const isExcluded = isManuallyExcluded(t);
       const rowStyle = isExcluded ? 'cursor:pointer;opacity:0.55;background:var(--bg-input);' : 'cursor:pointer;';
-      // Escolhe ícone/label do selo, em ordem de prioridade:
-      // manual → 🚫 EXCLUÍDO, estorno → 🔄 ESTORNO, fatura → 💳 FATURA,
-      // transferência → 🔁 TRANSF, qualquer outra categoria excluída → 🚫.
-      let badgeHtml = '';
-      if (isManual) {
-        badgeHtml = '<span class="invoice-badge" title="EXCLUÍDO MANUALMENTE — não conta nos totais (marcado via edição)" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFCDD2;color:#B71C1C;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🚫 EXCLUÍDO</span>';
-      } else if (isRev) {
-        badgeHtml = '<span class="invoice-badge" title="ESTORNO — par auto-cancelado, não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFE0B2;color:#E65100;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🔄 ESTORNO</span>';
-      } else if (isInvoice) {
-        const catLow = (cat || '').toLowerCase();
-        let emoji = '🚫', label = 'NÃO CONTA';
-        if (catLow.indexOf('fatura') !== -1 || catLow.indexOf('cart') !== -1) { emoji = '💳'; label = 'FATURA'; }
-        else if (catLow.indexOf('transfer') !== -1 || catLow.indexOf('transf') !== -1) { emoji = '🔁'; label = 'TRANSF'; }
-        badgeHtml = '<span class="invoice-badge" title="' + label + ' — não conta nos totais" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#E0E0E0;color:#424242;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">' + emoji + ' ' + label + '</span>';
-      }
-      const rowTitle = isManual ? 'Excluído manualmente — não conta nos totais'
-        : (isRev ? 'Estorno detectado — não conta nos totais'
-        : (isInvoice ? 'Não conta nos totais — categoria excluída via Settings'
-        : 'Clique para editar'));
+      const badgeHtml = isExcluded
+        ? '<span class="invoice-badge" title="EXCLUÍDO MANUALMENTE — não conta nos totais (marcado via edição)" style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:10px;background:#FFCDD2;color:#B71C1C;font-size:10px;font-weight:700;letter-spacing:0.3px;vertical-align:middle;">🚫 EXCLUÍDO</span>'
+        : '';
+      const rowTitle = isExcluded ? 'Excluído manualmente — não conta nos totais' : 'Clique para editar';
       return `<tr style="${rowStyle}" onclick="openEditTx(${t.id})" title="${rowTitle}">
         <td style="width:34px;text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="tx-select" data-tx-id="${t.id}" ${checked} onchange="toggleSelectTx(${t.id}, this.checked)" onclick="event.stopPropagation();" /></td>
         <td>${fmtDate(t.date)}</td>
@@ -3658,26 +3724,15 @@ function populateTxTable(txs) {
   updateSelectAllCheckbox(page);
   updateSelectionBar();
 
-  // Exibe o total de lançamentos + (se houver) o total excluído por
-  // manual, fatura/transferência ou estorno.
+  // Exibe o total de lançamentos + (se houver) o total excluído manualmente.
   const pag = document.getElementById('txPagination');
   if (pag) {
     if (!sorted.length) {
       pag.innerHTML = '';
     } else {
       let html = '<div style="color:var(--text-muted);font-size:12px;">Mostrando todas as ' + sorted.length + ' transações do período';
-      const parts = [];
       if (manualCount > 0) {
-        parts.push(manualCount + ' manual' + (manualCount === 1 ? '' : 'ais') + ' (' + centsToReal(manualCents) + ')');
-      }
-      if (invoiceCount > 0) {
-        parts.push(invoiceCount + ' fatura/transferência (' + centsToReal(invoiceCents) + ')');
-      }
-      if (reversalCount > 0) {
-        parts.push(reversalCount + ' estorno' + (reversalCount === 1 ? '' : 's') + ' (' + centsToReal(reversalCents) + ')');
-      }
-      if (parts.length) {
-        html += ' · <span style="color:var(--orange);">' + excludedCount + ' ignorada' + (excludedCount === 1 ? '' : 's') + ' dos totais — ' + parts.join(' + ') + '</span>';
+        html += ' · <span style="color:var(--orange);">' + manualCount + ' ignorada' + (manualCount === 1 ? '' : 's') + ' dos totais — ' + manualCount + ' manual' + (manualCount === 1 ? '' : 'ais') + ' (' + centsToReal(manualCents) + ')</span>';
       }
       html += '</div>';
       pag.innerHTML = html;
@@ -3695,10 +3750,10 @@ function getPeriodLabel() {
 }
 
 function getTotalsFromTxs(txs) {
-  // Totais SEMPRE ignoram pagamentos de fatura e pares de estorno (para não
-  // contar em dobro). A lista exibida continua com todas as transações —
-  // só os números agregados é que são limpos.
-  const clean = excludeNonCountable(txs);
+  // Totais SEMPRE ignoram lançamentos marcados manualmente como excluídos.
+  // A lista exibida continua com todas as transações — só os números
+  // agregados é que são limpos.
+  const clean = excludeManuallyExcluded(txs);
   let income = 0, expense = 0;
   clean.forEach(t => {
     const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -3994,7 +4049,12 @@ function exportXLS() {
     html += '<x:Name>Lancamentos</x:Name>';
     html += '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>';
     html += '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml>';
-    html += '<style>td,th{mso-number-format:"\\@";font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;} td.num{mso-number-format:"#,##0.00";text-align:right;}</style>';
+    // IMPORTANTE: o parser HTML do Excel NÃO aplica mso-number-format via
+    // seletores de classe de forma confiável — precisa ser inline em cada td.
+    // Por isso definimos os formatos como estilos inline abaixo, não no <style>.
+    const styleText = 'mso-number-format:"\\@";';
+    const styleNum  = 'mso-number-format:"#,##0.00";text-align:right;';
+    html += '<style>td,th{font-family:Arial;font-size:11pt;} th{background:#2E7D32;color:#fff;font-weight:bold;}</style>';
     html += '</head><body>';
     html += '<table border="1">';
     html += '<tr><td colspan="6"><b>Família Metzger - Lançamentos</b></td></tr>';
@@ -4004,11 +4064,16 @@ function exportXLS() {
     html += '<tr>' + header.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr>';
     rows.forEach(r => {
       html += '<tr>';
-      // Colunas de texto
-      for (let i = 0; i < 5; i++) html += '<td>' + esc(r[i]) + '</td>';
-      // Coluna de valor como número real (Excel calcula). Converte vírgula → ponto.
+      // Colunas de texto — força formato texto inline para não virar data/número
+      for (let i = 0; i < 5; i++) {
+        html += '<td style=\'' + styleText + '\'>' + esc(r[i]) + '</td>';
+      }
+      // Coluna de valor como número real — formato numérico inline (classe não
+      // funciona no Excel). O valor é emitido no formato Excel-neutro (ponto
+      // como separador decimal); o Excel exibe conforme o locale do usuário
+      // (pt-BR → vírgula). Converte "1.234,56" → "1234.56".
       const numeric = String(r[5]).replace(/\./g, '').replace(',', '.');
-      html += '<td class="num">' + esc(numeric) + '</td>';
+      html += '<td style=\'' + styleNum + '\'>' + esc(numeric) + '</td>';
       html += '</tr>';
     });
     html += '</table></body></html>';
@@ -5287,7 +5352,7 @@ function renderCards() {
 //  FAMILY
 // ═══════════════════════════════════════════════
 function renderFamily() {
-  const txs = excludeNonCountable(STATE.transactions);
+  const txs = excludeManuallyExcluded(STATE.transactions);
   const members = {alfredo: 0, esposa: 0, familia: 0};
   txs.forEach(t => {
     const val = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -5373,13 +5438,9 @@ async function renderReports() {
     const label = d.toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
     try {
       const raw = await fetchTransactions(start, end);
-      // Detecta estornos localmente (mês histórico, fora do STATE atual)
-      // e aplica também a exclusão manual (STATE.manuallyExcludedTxIds
-      // vale para qualquer período, não só o atual).
-      const monthReversals = detectReversals(raw);
-      const afterInvoice = excludeInvoicePayments(raw);
-      const afterReversals = afterInvoice.filter(function(t) { return !monthReversals.has(t.id); });
-      const txs = excludeManuallyExcluded(afterReversals);
+      // Aplica a exclusão manual (STATE.manuallyExcludedTxIds vale
+      // para qualquer período, não só o atual).
+      const txs = excludeManuallyExcluded(raw);
       let income = 0, expense = 0;
       txs.forEach(t => {
         const v = t.amount_cents || Math.round((t.amount || 0) * 100);
@@ -5549,8 +5610,6 @@ if (fcC) fcC.addEventListener('keydown', function(ev){
 });
 
 loadTheme();
-loadInvoicePaymentSettings();
-loadReversalSettings();
 loadManuallyExcludedIds();
 checkSavedLogin();
 </script>
