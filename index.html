@@ -1807,14 +1807,18 @@ async function apiInter(endpoint, options) {
     if (s) qs = '&' + s;
   }
   var url = '/api/proxy-inter?endpoint=' + encodeURIComponent(clean) + qs;
+  // HTTP headers não aceitam quebra de linha e PEM tem várias. Codificamos
+  // em base64 antes de enviar; o proxy (normalizePem) decodifica.
+  var certB64 = cfg.cert ? btoa(unescape(encodeURIComponent(cfg.cert))) : '';
+  var keyB64  = cfg.key  ? btoa(unescape(encodeURIComponent(cfg.key)))  : '';
   var fetchOpts = {
     method: options.method || 'GET',
     headers: {
       'X-Inter-Client-Id': cfg.clientId,
       'X-Inter-Client-Secret': cfg.clientSecret,
       'X-Inter-Conta-Corrente': cfg.conta || '',
-      'X-Inter-Cert': cfg.cert,
-      'X-Inter-Key': cfg.key,
+      'X-Inter-Cert': certB64,
+      'X-Inter-Key': keyB64,
       'X-Inter-Scope': cfg.scope || 'extrato.read'
     }
   };
@@ -1885,44 +1889,53 @@ function interAdaptTransaction(raw, accountId) {
 async function enrichWithInter(startDate, endDate) {
   if (!isInterEnabled()) return { ok: false, skipped: true };
   var errors = [];
-  var saldo = null, extrato = [];
-  try { saldo = await fetchInterSaldo(); }
+  var saldo = null, extrato = null; // null = não carregado / falhou
+  var saldoOk = false, extratoOk = false;
+  try { saldo = await fetchInterSaldo(); saldoOk = true; }
   catch (e) { console.warn('inter saldo', e); errors.push({ label: 'saldo', error: e }); }
-  try { extrato = await fetchInterExtrato(startDate, endDate); }
+  try { extrato = await fetchInterExtrato(startDate, endDate); extratoOk = true; }
   catch (e) { console.warn('inter extrato', e); errors.push({ label: 'extrato', error: e }); }
 
-  // 1. Conta sintética "Inter PJ" — ID determinístico para permitir diff entre refresh
   var interAccountId = 'inter_pj';
-  var saldoReais = 0;
-  if (saldo && typeof saldo.disponivel === 'number') saldoReais = saldo.disponivel;
-  else if (saldo && typeof saldo.saldoDisponivel === 'number') saldoReais = saldo.saldoDisponivel;
-  var interAccount = {
-    id: interAccountId,
-    name: 'Inter PJ',
-    type: 'checking',
-    current_balance: saldoReais,
-    current_balance_in_cents: Math.round(saldoReais * 100),
-    _inter: true,
-    _raw: saldo
-  };
-  // Remove qualquer entrada Inter pré-existente antes de inserir (idempotente)
-  STATE.accounts = (STATE.accounts || []).filter(function(a) { return !a._inter; });
-  STATE.accounts.push(interAccount);
 
-  // 2. Lançamentos: adapta e concatena em STATE.transactions
-  var adapted = (extrato || []).map(function(t) { return interAdaptTransaction(t, interAccountId); });
-  // Idempotência: remove Inter antigos antes de concatenar
-  STATE.transactions = (STATE.transactions || []).filter(function(t) { return !t._inter; });
-  STATE.transactions = STATE.transactions.concat(adapted);
+  // 1. Saldo: só reescreve a conta Inter se o fetch deu certo. Se falhou,
+  //    mantém a conta Inter anterior (se existir) — evita sobrescrever com
+  //    zero fabricado numa falha transitória (cert inválido, rede, 5xx).
+  if (saldoOk) {
+    var saldoReais = 0;
+    if (saldo && typeof saldo.disponivel === 'number') saldoReais = saldo.disponivel;
+    else if (saldo && typeof saldo.saldoDisponivel === 'number') saldoReais = saldo.saldoDisponivel;
+    var interAccount = {
+      id: interAccountId,
+      name: 'Inter PJ',
+      type: 'checking',
+      current_balance: saldoReais,
+      current_balance_in_cents: Math.round(saldoReais * 100),
+      _inter: true,
+      _raw: saldo
+    };
+    STATE.accounts = (STATE.accounts || []).filter(function(a) { return !a._inter; });
+    STATE.accounts.push(interAccount);
+  }
+
+  // 2. Extrato: só substitui os lançamentos _inter se o fetch deu certo.
+  var adaptedCount = 0;
+  if (extratoOk) {
+    var adapted = (extrato || []).map(function(t) { return interAdaptTransaction(t, interAccountId); });
+    STATE.transactions = (STATE.transactions || []).filter(function(t) { return !t._inter; });
+    STATE.transactions = STATE.transactions.concat(adapted);
+    adaptedCount = adapted.length;
+  }
 
   STATE._interLastErrors = errors;
   if (errors.length > 0) {
     var bannerEl = document.getElementById('__errBanner');
     var bannerTxt = document.getElementById('__errBannerText');
-    var msg = '⚠️ Inter Empresas: algumas chamadas falharam (' + errors.map(function(e) { return e.label; }).join(', ') + ').';
+    var msg = '⚠️ Inter Empresas: ' + errors.map(function(e) { return e.label; }).join(', ')
+      + ' falhou(aram). Dados anteriores do Inter foram preservados.';
     if (bannerEl && bannerTxt) { bannerTxt.textContent = msg; bannerEl.classList.add('show'); }
   }
-  return { ok: errors.length === 0, errors: errors, adapted: adapted.length };
+  return { ok: errors.length === 0, errors: errors, adapted: adaptedCount, saldoOk: saldoOk, extratoOk: extratoOk };
 }
 
 // ─── API Pluggy (via proxy-pluggy.js) ─────────────────────────────
@@ -5719,7 +5732,10 @@ function renderManageAccounts() {
   const body = document.getElementById('manageAccountsBody');
   const status = document.getElementById('manageAccountsStatus');
   if (!body) return;
-  const accs = sortByName(STATE.accounts || []);
+  // Exclui contas sintéticas (ex: _inter) da página de gerenciamento —
+  // não são editáveis (vêm de APIs externas) e seu id não-numérico quebraria
+  // o handler inline openAccountModal(...) que assume id numérico.
+  const accs = sortByName((STATE.accounts || []).filter(function(a) { return !a._inter; }));
   if (status) {
     status.textContent = accs.length
       ? accs.length + ' conta' + (accs.length === 1 ? '' : 's') + ' cadastrada' + (accs.length === 1 ? '' : 's') + '.'
