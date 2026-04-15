@@ -1299,6 +1299,59 @@ tr:hover td { background: var(--bg-card-alt); }
         </div>
       </div>
 
+      <!-- ── Config Inter Empresas (complementar) ── -->
+      <div id="settingsInter" class="card" style="margin-top:20px;">
+        <div class="card-header"><span class="card-title">🟠 Conexão com o Banco Inter Empresas <span style="font-size:11px;background:var(--orange-light);color:var(--orange);padding:2px 8px;border-radius:12px;margin-left:6px;font-weight:600;">COMPLEMENTAR</span></span></div>
+        <div style="padding: 8px 4px 4px;">
+          <p style="color: var(--text-secondary); margin-bottom: 14px; line-height:1.5;">
+            O Banco Inter não é suportado pelo Organizze. Conecte sua conta PJ do Inter aqui — os saldos e lançamentos do Inter serão <strong>adicionados</strong> aos dados do backend principal (Organizze ou Pluggy), sem substituir.
+          </p>
+          <div style="background: var(--orange-light); border-left: 4px solid var(--orange); padding: 14px 16px; border-radius: 8px; margin: 0 0 16px; font-size: 14px; line-height: 1.5;">
+            <strong>Como obter as credenciais do Inter:</strong><br>
+            1. Acesse <a href="https://developers.inter.co" target="_blank" rel="noopener" style="color: var(--orange); font-weight: 600;">developers.inter.co</a> e faça login com a conta PJ<br>
+            2. Crie uma aplicação com escopo <code>extrato.read</code><br>
+            3. Baixe o <strong>certificado (.crt)</strong> e a <strong>chave privada (.key)</strong><br>
+            4. Copie <strong>Client ID</strong> e <strong>Client Secret</strong><br>
+            5. Cole tudo abaixo e clique em "Salvar credenciais"
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color: var(--text); margin-bottom: 8px;">
+              <input type="checkbox" id="interEnabledInput" style="width:16px;height:16px;cursor:pointer;" />
+              Incluir dados do Inter Empresas no dashboard
+            </label>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 0 24px;">Quando ativado, a conta Inter aparece em "Saldos das Contas" e os lançamentos do extrato são somados aos lançamentos do backend principal.</p>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client ID</label>
+            <input type="text" id="interClientIdInput" placeholder="Cole seu Client ID do Inter" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Client Secret</label>
+            <input type="password" id="interClientSecretInput" placeholder="Cole seu Client Secret" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Número da Conta Corrente (opcional, com dígito, só números)</label>
+            <input type="text" id="interContaInput" placeholder="ex: 123456780" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Certificado (.crt) — cole o conteúdo PEM inteiro, incluindo as linhas <code>-----BEGIN CERTIFICATE-----</code></label>
+            <textarea id="interCertInput" rows="4" placeholder="-----BEGIN CERTIFICATE-----&#10;MIIF...&#10;-----END CERTIFICATE-----" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;resize:vertical;"></textarea>
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Chave Privada (.key) — cole o conteúdo PEM inteiro, incluindo as linhas <code>-----BEGIN PRIVATE KEY-----</code></label>
+            <textarea id="interKeyInput" rows="4" placeholder="-----BEGIN PRIVATE KEY-----&#10;MIIE...&#10;-----END PRIVATE KEY-----" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;resize:vertical;"></textarea>
+          </div>
+          <div id="interConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
+          <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="saveInterConfig()">💾 Salvar credenciais</button>
+            <button class="btn btn-secondary" onclick="testInterConnection()">🔌 Testar conexão</button>
+            <button class="btn btn-secondary" onclick="clearInterConfig()">🗑️ Limpar credenciais</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="margin-top:20px;">
         <div class="card-header"><span class="card-title">🔒 Trocar senha do app</span></div>
         <div style="padding: 8px 4px 4px;">
@@ -1703,6 +1756,175 @@ function savePluggyItemIds(ids) {
   localStorage.setItem('pluggy_item_ids', JSON.stringify(ids));
 }
 
+// ─── Credenciais Inter Empresas ───────────────────────────────────
+// O Inter é uma fonte COMPLEMENTAR: funciona em paralelo com o backend
+// principal (Organizze ou Pluggy), adicionando uma conta extra e os
+// lançamentos do extrato. Não é mutuamente exclusivo.
+function getInterConfig() {
+  return {
+    enabled: localStorage.getItem('inter_enabled') === '1',
+    clientId: localStorage.getItem('inter_client_id') || '',
+    clientSecret: localStorage.getItem('inter_client_secret') || '',
+    conta: localStorage.getItem('inter_conta') || '',
+    cert: localStorage.getItem('inter_cert') || '',
+    key: localStorage.getItem('inter_key') || '',
+    scope: localStorage.getItem('inter_scope') || 'extrato.read'
+  };
+}
+function saveInterConfigFields(cfg) {
+  if (cfg.clientId !== undefined) localStorage.setItem('inter_client_id', cfg.clientId);
+  if (cfg.clientSecret !== undefined) localStorage.setItem('inter_client_secret', cfg.clientSecret);
+  if (cfg.conta !== undefined) localStorage.setItem('inter_conta', cfg.conta);
+  if (cfg.cert !== undefined) localStorage.setItem('inter_cert', cfg.cert);
+  if (cfg.key !== undefined) localStorage.setItem('inter_key', cfg.key);
+  if (cfg.scope !== undefined) localStorage.setItem('inter_scope', cfg.scope);
+  if (cfg.enabled !== undefined) localStorage.setItem('inter_enabled', cfg.enabled ? '1' : '0');
+}
+function isInterEnabled() {
+  var cfg = getInterConfig();
+  return cfg.enabled && cfg.clientId && cfg.clientSecret && cfg.cert && cfg.key;
+}
+
+// ─── API Inter (via proxy-inter.js) ───────────────────────────────
+async function apiInter(endpoint, options) {
+  if (!options) options = {};
+  var cfg = getInterConfig();
+  if (!cfg.clientId || !cfg.clientSecret || !cfg.cert || !cfg.key) {
+    var err = new Error('Inter não configurado. Preencha credenciais em Configurações.');
+    err.status = 0;
+    err.code = 'NO_INTER_CREDS';
+    throw err;
+  }
+  var clean = String(endpoint).replace(/^\/+/, '');
+  // Params extras vão concatenados na query string
+  var qs = '';
+  if (options.query) {
+    var p = new URLSearchParams();
+    Object.keys(options.query).forEach(function(k) {
+      if (options.query[k] !== undefined && options.query[k] !== null) p.append(k, options.query[k]);
+    });
+    var s = p.toString();
+    if (s) qs = '&' + s;
+  }
+  var url = '/api/proxy-inter?endpoint=' + encodeURIComponent(clean) + qs;
+  var fetchOpts = {
+    method: options.method || 'GET',
+    headers: {
+      'X-Inter-Client-Id': cfg.clientId,
+      'X-Inter-Client-Secret': cfg.clientSecret,
+      'X-Inter-Conta-Corrente': cfg.conta || '',
+      'X-Inter-Cert': cfg.cert,
+      'X-Inter-Key': cfg.key,
+      'X-Inter-Scope': cfg.scope || 'extrato.read'
+    }
+  };
+  if (options.body !== undefined && options.body !== null) {
+    fetchOpts.headers['Content-Type'] = 'application/json';
+    fetchOpts.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+  }
+  var r = await fetch(url, fetchOpts);
+  var text = await r.text();
+  var data = null;
+  if (text) { try { data = JSON.parse(text); } catch (_) { data = text; } }
+  if (!r.ok) {
+    var e2 = new Error('Inter API ' + r.status + ': ' + (data && data.error ? data.error : (data && data.message) || text));
+    e2.status = r.status;
+    e2.details = data;
+    throw e2;
+  }
+  return data;
+}
+
+// Busca saldo atual da conta Inter. Endpoint: GET /banking/v2/saldo
+async function fetchInterSaldo() {
+  var data = await apiInter('saldo');
+  // Resposta típica: { disponivel, bloqueado, limite, ... } (valores em reais)
+  return data || {};
+}
+
+// Busca extrato do período. Endpoint: GET /banking/v2/extrato?dataInicio=...&dataFim=...
+// Retorna array bruto de lançamentos (estrutura Inter).
+async function fetchInterExtrato(startDate, endDate) {
+  var data = await apiInter('extrato', {
+    query: { dataInicio: startDate, dataFim: endDate }
+  });
+  // Resposta típica: { transacoes: [ { dataEntrada, tipoOperacao:'C'|'D', valor, titulo, descricao, ... } ] }
+  var list = [];
+  if (data && Array.isArray(data.transacoes)) list = data.transacoes;
+  else if (Array.isArray(data)) list = data;
+  return list;
+}
+
+// Converte um lançamento do Inter para o formato interno do app.
+// tipoOperacao 'C' = crédito (entrada, positivo), 'D' = débito (saída, negativo).
+function interAdaptTransaction(raw, accountId) {
+  var valor = parseFloat(raw.valor || 0);
+  var isDebit = String(raw.tipoOperacao || raw.tipo || '').toUpperCase() === 'D';
+  var signed = isDebit ? -Math.abs(valor) : Math.abs(valor);
+  var date = raw.dataEntrada || raw.dataTransacao || raw.data || '';
+  if (date && date.length > 10) date = date.substring(0, 10);
+  var desc = raw.titulo || raw.descricao || raw.detalhes || 'Lançamento Inter';
+  // ID estável se Inter não fornecer: concatena campos únicos
+  var id = raw.idTransacao || raw.id || ('inter_' + date + '_' + desc + '_' + valor);
+  return {
+    id: String(id),
+    description: String(desc).trim(),
+    date: date,
+    amount: signed,
+    amount_cents: Math.round(signed * 100),
+    notes: raw.descricao && raw.descricao !== desc ? raw.descricao : '',
+    account_id: accountId,
+    category_id: null,
+    _inter: true,
+    _raw: raw
+  };
+}
+
+// Enriquece o STATE com dados do Inter (saldo + extrato) APÓS o backend
+// principal ter carregado. Não substitui nada — apenas soma.
+async function enrichWithInter(startDate, endDate) {
+  if (!isInterEnabled()) return { ok: false, skipped: true };
+  var errors = [];
+  var saldo = null, extrato = [];
+  try { saldo = await fetchInterSaldo(); }
+  catch (e) { console.warn('inter saldo', e); errors.push({ label: 'saldo', error: e }); }
+  try { extrato = await fetchInterExtrato(startDate, endDate); }
+  catch (e) { console.warn('inter extrato', e); errors.push({ label: 'extrato', error: e }); }
+
+  // 1. Conta sintética "Inter PJ" — ID determinístico para permitir diff entre refresh
+  var interAccountId = 'inter_pj';
+  var saldoReais = 0;
+  if (saldo && typeof saldo.disponivel === 'number') saldoReais = saldo.disponivel;
+  else if (saldo && typeof saldo.saldoDisponivel === 'number') saldoReais = saldo.saldoDisponivel;
+  var interAccount = {
+    id: interAccountId,
+    name: 'Inter PJ',
+    type: 'checking',
+    current_balance: saldoReais,
+    current_balance_in_cents: Math.round(saldoReais * 100),
+    _inter: true,
+    _raw: saldo
+  };
+  // Remove qualquer entrada Inter pré-existente antes de inserir (idempotente)
+  STATE.accounts = (STATE.accounts || []).filter(function(a) { return !a._inter; });
+  STATE.accounts.push(interAccount);
+
+  // 2. Lançamentos: adapta e concatena em STATE.transactions
+  var adapted = (extrato || []).map(function(t) { return interAdaptTransaction(t, interAccountId); });
+  // Idempotência: remove Inter antigos antes de concatenar
+  STATE.transactions = (STATE.transactions || []).filter(function(t) { return !t._inter; });
+  STATE.transactions = STATE.transactions.concat(adapted);
+
+  STATE._interLastErrors = errors;
+  if (errors.length > 0) {
+    var bannerEl = document.getElementById('__errBanner');
+    var bannerTxt = document.getElementById('__errBannerText');
+    var msg = '⚠️ Inter Empresas: algumas chamadas falharam (' + errors.map(function(e) { return e.label; }).join(', ') + ').';
+    if (bannerEl && bannerTxt) { bannerTxt.textContent = msg; bannerEl.classList.add('show'); }
+  }
+  return { ok: errors.length === 0, errors: errors, adapted: adapted.length };
+}
+
 // ─── API Pluggy (via proxy-pluggy.js) ─────────────────────────────
 async function apiPluggy(endpoint, options) {
   if (!options) options = {};
@@ -1909,6 +2131,11 @@ async function loadAllPluggy() {
   STATE.creditCards = creditCards;
   STATE.budgets = []; // Pluggy não tem conceito de orçamento
   STATE.invoices = {};
+
+  // Inter Empresas (complementar) — não bloqueia o fluxo se falhar
+  try { await enrichWithInter(startVal, endVal); }
+  catch (e) { console.warn('enrichWithInter', e); }
+
   STATE.lastRefreshAt = Date.now();
   STATE._lastLoadErrors = _loadErrors;
   updateRefreshLabel();
@@ -2172,6 +2399,11 @@ async function loadAll() {
       if (i < STATE.creditCards.length - 1) await _sleep(INTER_CALL_DELAY);
     } catch (e) { console.warn('invoices ' + card.id, e); _loadErrors.push({ label: 'invoices/' + card.id, error: e }); }
   }
+
+  // Inter Empresas (complementar) — não bloqueia o fluxo se falhar
+  try { await enrichWithInter(start, end); }
+  catch (e) { console.warn('enrichWithInter', e); }
+
   STATE.lastRefreshAt = Date.now();
   STATE._lastLoadErrors = _loadErrors;
   updateRefreshLabel();
@@ -3086,9 +3318,96 @@ function renderSettings() {
   if (pci) pci.value = pc.clientId;
   if (psi) psi.value = pc.clientSecret;
 
+  // Inter Empresas fields
+  var ic = getInterConfig();
+  var ie = document.getElementById('interEnabledInput');
+  var ici = document.getElementById('interClientIdInput');
+  var ics = document.getElementById('interClientSecretInput');
+  var icc = document.getElementById('interContaInput');
+  var icert = document.getElementById('interCertInput');
+  var ikey = document.getElementById('interKeyInput');
+  if (ie) ie.checked = !!ic.enabled;
+  if (ici) ici.value = ic.clientId;
+  if (ics) ics.value = ic.clientSecret;
+  if (icc) icc.value = ic.conta;
+  if (icert) icert.value = ic.cert;
+  if (ikey) ikey.value = ic.key;
+
   // Backend toggle visual
   updateBackendToggleUI();
   renderPluggyItems();
+}
+
+// ─── Inter Empresas config ────────────────────────────────────────
+async function saveInterConfig() {
+  var clientId     = (document.getElementById('interClientIdInput').value || '').trim();
+  var clientSecret = (document.getElementById('interClientSecretInput').value || '').trim();
+  var conta        = (document.getElementById('interContaInput').value || '').trim();
+  var cert         = (document.getElementById('interCertInput').value || '').trim();
+  var key          = (document.getElementById('interKeyInput').value || '').trim();
+  var enabled      = !!document.getElementById('interEnabledInput').checked;
+  var status = document.getElementById('interConfigStatus');
+
+  if (enabled && (!clientId || !clientSecret || !cert || !key)) {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Para ativar o Inter, preencha Client ID, Client Secret, Certificado e Chave.</span>';
+    return;
+  }
+  saveInterConfigFields({
+    enabled: enabled,
+    clientId: clientId,
+    clientSecret: clientSecret,
+    conta: conta,
+    cert: cert,
+    key: key
+  });
+  if (status) {
+    status.innerHTML = enabled
+      ? '<span style="color:var(--green-600);">✓ Credenciais salvas. Clique em "Testar conexão" para validar ou atualize os dados.</span>'
+      : '<span style="color:var(--text-muted);">Credenciais salvas (integração desativada).</span>';
+  }
+}
+
+async function testInterConnection() {
+  var status = document.getElementById('interConfigStatus');
+  // Salva primeiro o que estiver no form (sem validar)
+  saveInterConfigFields({
+    clientId: (document.getElementById('interClientIdInput').value || '').trim(),
+    clientSecret: (document.getElementById('interClientSecretInput').value || '').trim(),
+    conta: (document.getElementById('interContaInput').value || '').trim(),
+    cert: (document.getElementById('interCertInput').value || '').trim(),
+    key: (document.getElementById('interKeyInput').value || '').trim()
+  });
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Testando conexão mTLS + OAuth...</span>';
+  try {
+    var saldo = await fetchInterSaldo();
+    var disponivel = (saldo && (saldo.disponivel ?? saldo.saldoDisponivel));
+    if (status) {
+      status.innerHTML = '<span style="color:var(--green-600);">✓ Conectado! Saldo disponível: '
+        + (typeof disponivel === 'number' ? fmt(disponivel) : '(campo não retornado)') + '</span>';
+    }
+  } catch (e) {
+    console.error('Inter test error', e);
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro: ' + (e.message || 'desconhecido') + '</span>';
+  }
+}
+
+function clearInterConfig() {
+  if (!confirm('Remover todas as credenciais do Inter deste dispositivo?')) return;
+  ['inter_enabled','inter_client_id','inter_client_secret','inter_conta','inter_cert','inter_key','inter_scope']
+    .forEach(function(k) { localStorage.removeItem(k); });
+  ['interEnabledInput','interClientIdInput','interClientSecretInput','interContaInput','interCertInput','interKeyInput']
+    .forEach(function(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = false;
+      else el.value = '';
+    });
+  var s = document.getElementById('interConfigStatus');
+  if (s) s.innerHTML = '<span style="color:var(--text-secondary);">Credenciais removidas.</span>';
+  // Remove da memória também
+  STATE.accounts = (STATE.accounts || []).filter(function(a) { return !a._inter; });
+  STATE.transactions = (STATE.transactions || []).filter(function(t) { return !t._inter; });
+  if (STATE.currentPage === 'dashboard') { try { renderDashboard(); } catch(_) {} }
 }
 
 // ─── Backend toggle ───────────────────────────────────────────────
