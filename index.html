@@ -457,6 +457,74 @@ th.sortable.sort-active .sort-ind {
 }
 .score-detail-item:last-child { border-bottom: none; }
 
+/* ─── DASH ACCOUNTS / CARDS LIST ─── */
+.dash-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
+.dash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-alt);
+  transition: all var(--transition);
+}
+.dash-item:hover { transform: translateX(2px); box-shadow: var(--shadow); }
+.dash-item-info { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.dash-item-icon { font-size: 22px; flex-shrink: 0; }
+.dash-item-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-item-sub { font-size: 11px; color: var(--text-muted); }
+.dash-item-values { text-align: right; flex-shrink: 0; }
+.dash-item-value {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  font-size: 15px;
+}
+.dash-item-value.positive { color: var(--green-600); }
+.dash-item-value.negative { color: var(--red); }
+.dash-card-bar {
+  position: relative;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.dash-card-bar-fill {
+  position: absolute;
+  top: 0; left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--green-500), var(--green-600));
+  transition: width var(--transition);
+}
+.dash-card-bar-fill.warn { background: linear-gradient(90deg, #FFB300, #FB8C00); }
+.dash-card-bar-fill.danger { background: linear-gradient(90deg, #EF5350, #C62828); }
+.dash-totals {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 4px 0;
+  margin-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dash-totals strong {
+  display: block;
+  font-family: 'Space Mono', monospace;
+  font-size: 15px;
+  color: var(--text);
+  margin-top: 2px;
+}
+
 /* ─── ALERTS ─── */
 .alert {
   padding: 14px 18px;
@@ -879,6 +947,16 @@ tr:hover td { background: var(--bg-card-alt); }
     <!-- ═══ DASHBOARD ═══ -->
     <div class="page active" id="page-dashboard">
       <div class="grid-4" id="dashStats"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header"><span class="card-title">🏦 Saldos das Contas</span></div>
+          <div id="dashAccounts"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">💳 Limites dos Cartões</span></div>
+          <div id="dashCards"></div>
+        </div>
+      </div>
       <div class="grid-2">
         <div class="card">
           <div class="card-header"><span class="card-title">📊 Receitas vs Despesas</span></div>
@@ -3350,6 +3428,12 @@ function renderDashboard() {
     `;
   });
 
+  // Saldos das contas bancárias
+  safeSection('dashAccounts', function() { renderDashAccounts(); });
+
+  // Limites dos cartões de crédito
+  safeSection('dashCards', function() { renderDashCards(); });
+
   // Income vs Expense chart
   safeSection('chartIncome', function() {
     renderBarChart('chartIncome', ['Receitas','Despesas'], [income/100, expense/100], ['#43A047','#C62828']);
@@ -3420,6 +3504,156 @@ function renderDashboard() {
       `<div class="alert alert-${a.type}"><span>${a.type==='danger'?'🚨':a.type==='warning'?'⚠️':'ℹ️'}</span> ${a.msg}</div>`
     ).join('');
   });
+}
+
+// ─── Helpers do dashboard: contas e cartões ───────────────────────
+// Retorna o saldo da conta em centavos, suportando o formato Organizze
+// (current_balance_in_cents) e o formato interno/Pluggy (current_balance em reais).
+function getAccountBalanceCents(acc) {
+  if (!acc) return 0;
+  if (typeof acc.current_balance_in_cents === 'number') return acc.current_balance_in_cents;
+  return Math.round((acc.current_balance || 0) * 100);
+}
+
+// Retorna o limite do cartão em centavos
+function getCardLimitCents(card) {
+  if (!card) return 0;
+  if (typeof card.limit_cents === 'number') return card.limit_cents;
+  return Math.round((card.limit || 0) * 100);
+}
+
+// Retorna o limite disponível em centavos. Para Pluggy o valor vem direto
+// (available_limit). Para Organizze não é exposto pela API: estimamos como
+// limite − soma das faturas em aberto/vencidas/futuras.
+function getCardAvailableCents(card) {
+  if (!card) return 0;
+  const limit = getCardLimitCents(card);
+  if (typeof card.available_limit === 'number') {
+    return Math.round(card.available_limit * 100);
+  }
+  if (typeof card.available_limit_cents === 'number') {
+    return card.available_limit_cents;
+  }
+  // Estimativa via faturas (Organizze)
+  const invsRaw = (STATE.invoices || {})[card.id];
+  const list = Array.isArray(invsRaw)
+    ? invsRaw
+    : (invsRaw && Array.isArray(invsRaw.invoices) ? invsRaw.invoices : []);
+  let used = 0;
+  list.forEach(function(inv) {
+    if (!inv || inv.status === 'paid') return;
+    const v = typeof inv.amount_cents === 'number'
+      ? inv.amount_cents
+      : Math.round((inv.amount || 0) * 100);
+    used += Math.abs(v);
+  });
+  return Math.max(0, limit - used);
+}
+
+function renderDashAccounts() {
+  const el = document.getElementById('dashAccounts');
+  if (!el) return;
+  const accounts = (STATE.accounts || []).filter(function(a) {
+    return !a.archived && a.type !== 'credit_card';
+  });
+  if (accounts.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="emoji">🏦</div><div>Nenhuma conta bancária encontrada.</div></div>';
+    return;
+  }
+  // Ordena: maior saldo primeiro
+  const sorted = accounts.slice().sort(function(a, b) {
+    return getAccountBalanceCents(b) - getAccountBalanceCents(a);
+  });
+  let total = 0;
+  const itemsHTML = sorted.map(function(acc) {
+    const bal = getAccountBalanceCents(acc);
+    total += bal;
+    const cls = bal >= 0 ? 'positive' : 'negative';
+    const typeLabel = acc.type === 'savings' ? 'Poupança'
+      : acc.type === 'investment' ? 'Investimento'
+      : acc.type === 'cash' ? 'Dinheiro'
+      : 'Conta corrente';
+    return '<div class="dash-item">' +
+      '<div class="dash-item-info">' +
+        '<span class="dash-item-icon">🏦</span>' +
+        '<div style="min-width:0;">' +
+          '<div class="dash-item-name">' + escapeHtml(acc.name || 'Conta') + '</div>' +
+          '<div class="dash-item-sub">' + typeLabel + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dash-item-values">' +
+        '<div class="dash-item-value ' + cls + '">' + centsToReal(bal) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  const totalCls = total >= 0 ? 'positive' : 'negative';
+  el.innerHTML =
+    '<div class="dash-list">' + itemsHTML + '</div>' +
+    '<div class="dash-totals">' +
+      '<span>Total</span>' +
+      '<strong class="' + totalCls + '" style="color:' + (total >= 0 ? 'var(--green-600)' : 'var(--red)') + ';">' + centsToReal(total) + '</strong>' +
+    '</div>';
+}
+
+function renderDashCards() {
+  const el = document.getElementById('dashCards');
+  if (!el) return;
+  const cards = (STATE.creditCards || []).filter(function(c) { return !c.archived; });
+  if (cards.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="emoji">💳</div><div>Nenhum cartão de crédito cadastrado.</div></div>';
+    return;
+  }
+  const sorted = cards.slice().sort(function(a, b) {
+    return getCardLimitCents(b) - getCardLimitCents(a);
+  });
+  let totalLimit = 0, totalAvail = 0;
+  const itemsHTML = sorted.map(function(card) {
+    const limit = getCardLimitCents(card);
+    const avail = getCardAvailableCents(card);
+    const used = Math.max(0, limit - avail);
+    totalLimit += limit;
+    totalAvail += avail;
+    const pctUsed = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+    let barCls = '';
+    if (pctUsed >= 90) barCls = 'danger';
+    else if (pctUsed >= 70) barCls = 'warn';
+    return '<div class="dash-item" style="flex-direction:column;align-items:stretch;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+        '<div class="dash-item-info">' +
+          '<span class="dash-item-icon">💳</span>' +
+          '<div style="min-width:0;">' +
+            '<div class="dash-item-name">' + escapeHtml(card.name || 'Cartão') + '</div>' +
+            '<div class="dash-item-sub">Limite: ' + centsToReal(limit) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dash-item-values">' +
+          '<div class="dash-item-value positive">' + centsToReal(avail) + '</div>' +
+          '<div class="dash-item-sub">disponível</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dash-card-bar"><div class="dash-card-bar-fill ' + barCls + '" style="width:' + pctUsed.toFixed(1) + '%;"></div></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:4px;">' +
+        '<span>Usado: ' + centsToReal(used) + ' (' + pctUsed.toFixed(0) + '%)</span>' +
+        '<span>' + centsToReal(limit) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  el.innerHTML =
+    '<div class="dash-list">' + itemsHTML + '</div>' +
+    '<div class="dash-totals">' +
+      '<div><span>Limite total</span><strong>' + centsToReal(totalLimit) + '</strong></div>' +
+      '<div style="text-align:right;"><span>Disponível total</span><strong style="color:var(--green-600);">' + centsToReal(totalAvail) + '</strong></div>' +
+    '</div>';
+}
+
+// Escape mínimo para evitar quebra de HTML em nomes vindos da API.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ═══════════════════════════════════════════════
