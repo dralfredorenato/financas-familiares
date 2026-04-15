@@ -1336,11 +1336,27 @@ tr:hover td { background: var(--bg-card-alt); }
             <input type="text" id="interContaInput" placeholder="ex: 123456780" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;" />
           </div>
           <div class="form-group" style="margin-bottom: 14px;">
-            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Certificado (.crt) — cole o conteúdo PEM inteiro, incluindo as linhas <code>-----BEGIN CERTIFICATE-----</code></label>
+            <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">
+              <span>Certificado (.crt) — faça upload do arquivo OU cole o conteúdo PEM</span>
+              <span id="interCertFileName" style="font-size:11px;color:var(--green-600);font-weight:600;"></span>
+            </label>
+            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+              <input type="file" id="interCertFile" accept=".crt,.pem,.cer,.txt,application/x-x509-ca-cert,application/x-pem-file" style="display:none;" onchange="loadInterCertFile(event)" />
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('interCertFile').click()">📎 Carregar arquivo .crt</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('interCertInput').value='';document.getElementById('interCertFileName').textContent='';">✕ Limpar</button>
+            </div>
             <textarea id="interCertInput" rows="4" placeholder="-----BEGIN CERTIFICATE-----&#10;MIIF...&#10;-----END CERTIFICATE-----" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;resize:vertical;"></textarea>
           </div>
           <div class="form-group" style="margin-bottom: 14px;">
-            <label style="display:block; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">Chave Privada (.key) — cole o conteúdo PEM inteiro, incluindo as linhas <code>-----BEGIN PRIVATE KEY-----</code></label>
+            <label style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color: var(--text-secondary); margin-bottom: 6px;">
+              <span>Chave Privada (.key) — faça upload do arquivo OU cole o conteúdo PEM</span>
+              <span id="interKeyFileName" style="font-size:11px;color:var(--green-600);font-weight:600;"></span>
+            </label>
+            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+              <input type="file" id="interKeyFile" accept=".key,.pem,.txt,application/x-pem-file,application/pkcs8" style="display:none;" onchange="loadInterKeyFile(event)" />
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('interKeyFile').click()">📎 Carregar arquivo .key</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('interKeyInput').value='';document.getElementById('interKeyFileName').textContent='';">✕ Limpar</button>
+            </div>
             <textarea id="interKeyInput" rows="4" placeholder="-----BEGIN PRIVATE KEY-----&#10;MIIE...&#10;-----END PRIVATE KEY-----" style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;resize:vertical;"></textarea>
           </div>
           <div id="interConfigStatus" style="font-size: 13px; margin: 12px 0; min-height: 18px;"></div>
@@ -3345,10 +3361,56 @@ function renderSettings() {
   if (icc) icc.value = ic.conta;
   if (icert) icert.value = ic.cert;
   if (ikey) ikey.value = ic.key;
+  // Se já havia conteúdo salvo, indica ao lado do label para o usuário saber
+  var certNameEl = document.getElementById('interCertFileName');
+  var keyNameEl = document.getElementById('interKeyFileName');
+  if (certNameEl) certNameEl.textContent = ic.cert ? '✓ certificado já carregado' : '';
+  if (keyNameEl) keyNameEl.textContent = ic.key ? '✓ chave já carregada' : '';
 
   // Backend toggle visual
   updateBackendToggleUI();
   renderPluggyItems();
+}
+
+// ─── Inter Empresas: upload de cert/key via <input type="file"> ──
+// Lê o arquivo como texto (PEM é ASCII), valida que tem a marca BEGIN,
+// popula a textarea e mostra nome do arquivo ao lado do label.
+function _loadInterPemFile(ev, textareaId, fileNameSpanId, expectedBegin, label) {
+  var file = ev && ev.target && ev.target.files && ev.target.files[0];
+  if (!file) return;
+  var status = document.getElementById('interConfigStatus');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var txt = String(e.target.result || '');
+    // Remove BOM se houver
+    if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);
+    // Normaliza quebras \r\n → \n
+    txt = txt.replace(/\r\n/g, '\n').trim();
+    if (txt.indexOf('-----BEGIN') < 0) {
+      if (status) status.innerHTML = '<span style="color:var(--red);">⚠️ O arquivo ' + file.name + ' não parece ser um ' + label + ' PEM válido (não achei <code>-----BEGIN</code>). Se for .pfx/.p12, precisa converter para PEM primeiro.</span>';
+      return;
+    }
+    if (expectedBegin && txt.indexOf(expectedBegin) < 0) {
+      // Aviso mais brando — alguns certs/keys usam variantes de header
+      console.warn('PEM header não bate com esperado (' + expectedBegin + '), mas tem BEGIN — aceitando.');
+    }
+    document.getElementById(textareaId).value = txt;
+    var sp = document.getElementById(fileNameSpanId);
+    if (sp) sp.textContent = '✓ ' + file.name + ' (' + Math.round(file.size / 1024 * 10) / 10 + ' KB)';
+    if (status) status.innerHTML = '<span style="color:var(--green-600);">✓ ' + label + ' carregado de ' + file.name + '. Agora clique em "Salvar credenciais".</span>';
+  };
+  reader.onerror = function() {
+    if (status) status.innerHTML = '<span style="color:var(--red);">Erro ao ler ' + file.name + '.</span>';
+  };
+  reader.readAsText(file);
+}
+
+function loadInterCertFile(ev) {
+  _loadInterPemFile(ev, 'interCertInput', 'interCertFileName', '-----BEGIN CERTIFICATE-----', 'certificado');
+}
+function loadInterKeyFile(ev) {
+  // Aceita tanto PRIVATE KEY quanto RSA PRIVATE KEY / EC PRIVATE KEY
+  _loadInterPemFile(ev, 'interKeyInput', 'interKeyFileName', '-----BEGIN', 'chave privada');
 }
 
 // ─── Inter Empresas config ────────────────────────────────────────
@@ -3408,13 +3470,16 @@ function clearInterConfig() {
   if (!confirm('Remover todas as credenciais do Inter deste dispositivo?')) return;
   ['inter_enabled','inter_client_id','inter_client_secret','inter_conta','inter_cert','inter_key','inter_scope']
     .forEach(function(k) { localStorage.removeItem(k); });
-  ['interEnabledInput','interClientIdInput','interClientSecretInput','interContaInput','interCertInput','interKeyInput']
+  ['interEnabledInput','interClientIdInput','interClientSecretInput','interContaInput','interCertInput','interKeyInput','interCertFile','interKeyFile']
     .forEach(function(id) {
       var el = document.getElementById(id);
       if (!el) return;
       if (el.type === 'checkbox') el.checked = false;
       else el.value = '';
     });
+  ['interCertFileName','interKeyFileName'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.textContent = '';
+  });
   var s = document.getElementById('interConfigStatus');
   if (s) s.innerHTML = '<span style="color:var(--text-secondary);">Credenciais removidas.</span>';
   // Remove da memória também
