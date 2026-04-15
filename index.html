@@ -2421,6 +2421,30 @@ async function loadAll() {
   STATE.creditCards  = Array.isArray(r3) ? r3 : [];
   STATE.budgets      = Array.isArray(r4) ? r4 : [];
   STATE.invoices = {};
+
+  // Organizze não retorna o saldo no GET /accounts (só metadados).
+  // Para cada conta ativa, busca o saldo via GET /accounts/:id que inclui
+  // current_balance_in_cents. Erro em uma conta não bloqueia o resto.
+  for (var ai = 0; ai < STATE.accounts.length; ai++) {
+    var a = STATE.accounts[ai];
+    if (!a || a.archived) continue;
+    try {
+      var accDetail = await api('accounts/' + a.id);
+      if (accDetail && typeof accDetail === 'object') {
+        // Copia todos os campos extras do detail para o account na lista
+        Object.keys(accDetail).forEach(function(k) {
+          if (STATE.accounts[ai][k] === undefined || k === 'current_balance_in_cents' || k === 'current_balance') {
+            STATE.accounts[ai][k] = accDetail[k];
+          }
+        });
+      }
+      if (ai < STATE.accounts.length - 1) await _sleep(INTER_CALL_DELAY);
+    } catch (e) {
+      console.warn('account balance ' + a.id, e);
+      _loadErrors.push({ label: 'accounts/' + a.id, error: e });
+    }
+  }
+
   for (var i = 0; i < STATE.creditCards.length; i++) {
     var card = STATE.creditCards[i];
     try {
@@ -3796,7 +3820,9 @@ function renderDashboard() {
     });
   });
 
-  const totalBalance = (Array.isArray(STATE.accounts) ? STATE.accounts : []).reduce((s, a) => s + (a.current_balance_in_cents || Math.round((a.current_balance || 0) * 100)), 0);
+  const totalBalance = (Array.isArray(STATE.accounts) ? STATE.accounts : [])
+    .filter(a => !a.archived && a.type !== 'credit_card')
+    .reduce((s, a) => s + getAccountBalanceCents(a), 0);
   const net = income - expense;
 
   // Stats cards
@@ -3904,12 +3930,47 @@ function renderDashboard() {
 }
 
 // ─── Helpers do dashboard: contas e cartões ───────────────────────
-// Retorna o saldo da conta em centavos, suportando o formato Organizze
-// (current_balance_in_cents) e o formato interno/Pluggy (current_balance em reais).
+// Retorna o saldo da conta em centavos, tentando vários campos comuns:
+//  - current_balance_in_cents (Organizze detail endpoint, Inter sintético)
+//  - current_balance (Pluggy/adapter, em reais)
+//  - balance_cents / balance (fallbacks)
+// Se nenhum estiver presente, calcula somando as transações conhecidas
+// daquela conta (pode ser parcial — só cobre o período carregado).
 function getAccountBalanceCents(acc) {
   if (!acc) return 0;
   if (typeof acc.current_balance_in_cents === 'number') return acc.current_balance_in_cents;
-  return Math.round((acc.current_balance || 0) * 100);
+  if (typeof acc.balance_cents === 'number') return acc.balance_cents;
+  if (typeof acc.current_balance === 'number') return Math.round(acc.current_balance * 100);
+  if (typeof acc.balance === 'number') return Math.round(acc.balance * 100);
+  // Último recurso: soma transações conhecidas (parcial)
+  var sum = 0;
+  (STATE.transactions || []).forEach(function(t) {
+    if (t && t.account_id === acc.id) {
+      sum += (typeof t.amount_cents === 'number' ? t.amount_cents : Math.round((t.amount || 0) * 100));
+    }
+  });
+  return sum;
+}
+
+// Label amigável para o tipo de conta. Cobre os tipos oficiais do
+// Organizze e alguns comuns do Pluggy/outros. Fallback para "Conta".
+function getAccountTypeLabel(acc) {
+  if (!acc || !acc.type) return 'Conta';
+  var t = String(acc.type).toLowerCase();
+  var map = {
+    checking: 'Conta corrente',
+    current: 'Conta corrente',
+    savings: 'Poupança',
+    investment: 'Investimento',
+    investments: 'Investimento',
+    cash: 'Dinheiro',
+    other: 'Outros',
+    other_kind: 'Outros',
+    loan: 'Empréstimo',
+    merchant: 'Maquininha',
+    virtual: 'Conta virtual'
+  };
+  return map[t] || (t.charAt(0).toUpperCase() + t.slice(1));
 }
 
 // Retorna o limite do cartão em centavos
@@ -3966,15 +4027,14 @@ function renderDashAccounts() {
     const bal = getAccountBalanceCents(acc);
     total += bal;
     const cls = bal >= 0 ? 'positive' : 'negative';
-    const typeLabel = acc.type === 'savings' ? 'Poupança'
-      : acc.type === 'investment' ? 'Investimento'
-      : acc.type === 'cash' ? 'Dinheiro'
-      : 'Conta corrente';
+    const typeLabel = getAccountTypeLabel(acc);
+    const icon = acc._inter ? '🟠' : '🏦';
+    const tag = acc._inter ? ' <span style="font-size:9px;background:var(--orange-light);color:var(--orange);padding:1px 6px;border-radius:10px;margin-left:4px;font-weight:600;vertical-align:middle;">INTER</span>' : '';
     return '<div class="dash-item">' +
       '<div class="dash-item-info">' +
-        '<span class="dash-item-icon">🏦</span>' +
+        '<span class="dash-item-icon">' + icon + '</span>' +
         '<div style="min-width:0;">' +
-          '<div class="dash-item-name">' + escapeHtml(acc.name || 'Conta') + '</div>' +
+          '<div class="dash-item-name">' + escapeHtml(acc.name || 'Conta') + tag + '</div>' +
           '<div class="dash-item-sub">' + typeLabel + '</div>' +
         '</div>' +
       '</div>' +
@@ -5812,10 +5872,9 @@ function renderManageAccounts() {
   }
   const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const txs = STATE.transactions || [];
-  const typeLabels = { checking: 'Corrente', savings: 'Poupança', investment: 'Investimento', cash: 'Dinheiro', other_kind: 'Outros' };
   body.innerHTML = accs.map(a => {
     const uses = txs.filter(t => t.account_id === a.id).length;
-    const type = typeLabels[a.type] || a.type || '—';
+    const type = getAccountTypeLabel(a);
     return '<tr>'
       + '<td style="font-weight:600;">🏦 ' + escHtml(a.name) + (a.description ? '<br><span style="font-size:12px;color:var(--text-muted);">' + escHtml(a.description) + '</span>' : '') + '</td>'
       + '<td style="color:var(--text-secondary);">' + escHtml(type) + '</td>'
